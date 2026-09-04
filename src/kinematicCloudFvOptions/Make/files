@@ -1,0 +1,3 @@
+kinematicCloudSource.C
+
+LIB = $(FOAM_USER_LIBBIN)/libkinematicCloudFvOptions

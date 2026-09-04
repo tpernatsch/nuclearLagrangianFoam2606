@@ -1,0 +1,6 @@
+InterfaceCompositionModel/InterfaceCompositionModelsCustom.C
+massTransferModels/Higbie/Higbie.C
+
+bubbleFoam.C
+
+EXE = $(FOAM_USER_APPBIN)/bubbleFoam

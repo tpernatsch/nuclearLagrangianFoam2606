@@ -1,0 +1,6 @@
+fvPatchFields/albedo/albedoFvPatchScalarField.C
+fvPatchFields/deposition/depositionFvPatchScalarField.C
+functionObjects/reactorParameters/reactorParameters.C
+
+
+LIB = $(FOAM_USER_LIBBIN)/libnuclear

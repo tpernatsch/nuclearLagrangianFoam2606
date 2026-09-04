@@ -1,0 +1,12 @@
+# wmake build outputs (per-directory object files and dependency caches)
+**/Make/linux64*/
+
+# wmake's generated header symlink farms
+**/lnInclude/
+
+# top-level compiled binaries/libraries
+platforms/
+
+# editor/OS cruft
+*.swp
+.DS_Store
