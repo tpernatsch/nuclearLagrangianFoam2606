@@ -1,0 +1,36 @@
+phaseSystem = $(LIB_SRC)/phaseSystemModels/reactingEuler
+
+EXE_INC = \
+    -I${phaseSystem}/multiphaseSystem/lnInclude \
+    -I$(LIB_SRC)/finiteVolume/lnInclude \
+    -I$(LIB_SRC)/meshTools/lnInclude \
+    -I$(LIB_SRC)/sampling/lnInclude \
+    -I$(LIB_SRC)/fvOptions/lnInclude \
+    -I$(LIB_SRC)/thermophysicalModels/basic/lnInclude \
+    -I$(LIB_SRC)/transportModels/compressible/lnInclude \
+    -I$(LIB_SRC)/TurbulenceModels/turbulenceModels/lnInclude \
+    -I$(LIB_SRC)/TurbulenceModels/compressible/lnInclude \
+    -I$(LIB_SRC)/TurbulenceModels/compressible/turbulentFluidThermoModels/turbulentFluidFvPatchFields/lnInclude \
+    -I$(LIB_SRC)/TurbulenceModels/phaseCompressible/lnInclude
+
+LIB_LIBS = \
+    -lfiniteVolume \
+    -lmeshTools \
+    -lsampling \
+    -lfvOptions \
+    -lreactingMultiphaseSystem \
+    -lfluidThermophysicalModels \
+    -lturbulenceModels \
+    -lcompressibleTurbulenceModels \
+    -lcompressibleTransportModels
+# Deliberately NOT linking -lphaseCompressibleTurbulenceModels: doing so
+# causes an exit-time heap corruption ("malloc_consolidate(): unaligned
+# fastbin chunk detected" / "unsorted double linked list corrupted") when
+# this library is dynamically loaded via `libs` into reactingMultiphaseEulerFoam
+# - confirmed via a minimal isolated reproduction (a single trivial
+# runtime-selection-table class, otherwise unused, crashes purely from
+# this one link flag; every other combination of this library's actual
+# dependencies was clean). We never construct a phaseCompressibleTurbulenceModel
+# ourselves, only call virtual methods (nut()/epsilon()) on one that some
+# other, already-linked code constructed - that dispatches through the
+# object's own vtable at runtime and needs no direct link to this library.
