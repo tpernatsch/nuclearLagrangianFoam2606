@@ -48,7 +48,14 @@ Foam::particleTransferModels::dispersedInterceptionEfficiencies::
 YoonLuttrellIntermediateEfficiency::E(const volScalarField& N) const
 {
     const volScalarField Re(transfer_.interface().Re());
-    const volScalarField d(transfer_.interface().dispersed().d());
+    const volScalarField d
+    (
+        max
+        (
+            transfer_.interface().dispersed().d(),
+            dimensionedScalar(dimLength, SMALL)
+        )
+    );
     const volScalarField U(mag(transfer_.interface().dispersed().U()));
 
     const_cast<YoonLuttrellIntermediateEfficiency&>(*this).setInductionTime();
