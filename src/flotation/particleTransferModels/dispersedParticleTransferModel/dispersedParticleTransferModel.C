@@ -55,13 +55,18 @@ Foam::particleTransferModels::dispersedParticleTransferModel::R
         blending_->f1(interface_.dispersed(), interface_.continuous())
     );
 
+    const volScalarField dSafe
+    (
+        max(interface_.dispersed().d(), dimensionedScalar(dimLength, SMALL))
+    );
+
     return
        -fvm::Sp
         (
             blending
           * this->K(N)
           * 6.0*interface_.dispersed()
-          / (pi*pow3(interface_.dispersed().d())),
+          / (pi*pow3(dSafe)),
             N
         );
 }

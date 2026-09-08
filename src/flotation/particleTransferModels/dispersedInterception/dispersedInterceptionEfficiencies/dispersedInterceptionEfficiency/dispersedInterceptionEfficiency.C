@@ -101,9 +101,16 @@ const
 {
     label i = Foam::flotationSystem::sectionNum(N);
 
-    return
-        transfer_.model().system().distribution()[i]
-      / transfer_.interface().dispersed().d();
+    const volScalarField dSafe
+    (
+        max
+        (
+            transfer_.interface().dispersed().d(),
+            dimensionedScalar(dimLength, SMALL)
+        )
+    );
+
+    return transfer_.model().system().distribution()[i]/dSafe;
 }
 
 // ************************************************************************* //
