@@ -64,13 +64,6 @@ inline const Foam::volScalarField& Foam::ThermoCloud<CloudType>::muc() const
 
 
 template<class CloudType>
-inline const Foam::volVectorField& Foam::ThermoCloud<CloudType>::vort() const
-{
-    return vort_;
-}
-
-
-template<class CloudType>
 inline const Foam::SLGThermo& Foam::ThermoCloud<CloudType>::thermo() const
 {
     return thermo_;

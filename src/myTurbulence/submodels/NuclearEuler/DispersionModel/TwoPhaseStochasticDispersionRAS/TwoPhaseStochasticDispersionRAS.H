@@ -5,7 +5,7 @@
     \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
 -------------------------------------------------------------------------------
-    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2026 Tommaso Pernatsch
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,19 +24,20 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::FunctionYPlusDispersionRAS
+    Foam::TwoPhaseStochasticDispersionRAS
 
 Description
-    The velocity is perturbed in random direction, with a
-    Gaussian random number distribution with variance sigma.
-    where sigma is defined below
+    Direct port of StochasticDispersionRAS to the secondary Euler phase:
+    an isotropic random perturbation with variance set by phase 2's own
+    k2/epsilon2 fields (see TwoPhaseDispersionRASModel) instead of the
+    primary phase's.
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef FunctionYPlusDispersionRAS_H
-#define FunctionYPlusDispersionRAS_H
+#ifndef TwoPhaseStochasticDispersionRAS_H
+#define TwoPhaseStochasticDispersionRAS_H
 
-#include "DispersionRASModel.H"
+#include "TwoPhaseDispersionRASModel.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -44,42 +45,47 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class FunctionYPlusDispersionRAS Declaration
+               Class TwoPhaseStochasticDispersionRAS Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class CloudType>
-class FunctionYPlusDispersionRAS
+class TwoPhaseStochasticDispersionRAS
 :
-    public DispersionRASModel<CloudType>
+    public TwoPhaseDispersionRASModel<CloudType>
 {
 public:
 
     //- Runtime type information
-    TypeName("FunctionYPlusDispersionRAS");
+    TypeName("twoPhaseStochasticDispersionRAS");
 
-    // declaration of yPlus
-    volScalarField yP_;
 
     // Constructors
 
         //- Construct from components
-        FunctionYPlusDispersionRAS(const dictionary& dict, CloudType& owner);
+        TwoPhaseStochasticDispersionRAS
+        (
+            const dictionary& dict,
+            CloudType& owner
+        );
 
         //- Construct copy
-        FunctionYPlusDispersionRAS(const FunctionYPlusDispersionRAS<CloudType>& dm);
+        TwoPhaseStochasticDispersionRAS
+        (
+            const TwoPhaseStochasticDispersionRAS<CloudType>& dm
+        );
 
         //- Construct and return a clone
         virtual autoPtr<DispersionModel<CloudType>> clone() const
         {
             return autoPtr<DispersionModel<CloudType>>
             (
-                new FunctionYPlusDispersionRAS<CloudType>(*this)
+                new TwoPhaseStochasticDispersionRAS<CloudType>(*this)
             );
         }
 
 
     //- Destructor
-    virtual ~FunctionYPlusDispersionRAS();
+    virtual ~TwoPhaseStochasticDispersionRAS();
 
 
     // Member Functions
@@ -95,7 +101,6 @@ public:
             const vector& Uc,
             const scalar rhoc,
             const scalar muc,
-            const vector& vortc,
             vector& UTurb,
             scalar& tTurb,
             scalar& tTurbLoc
@@ -110,7 +115,7 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #ifdef NoRepository
-    #include "FunctionYPlusDispersionRAS.C"
+    #include "TwoPhaseStochasticDispersionRAS.C"
 #endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

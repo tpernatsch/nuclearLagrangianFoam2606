@@ -11,6 +11,7 @@ DERIVEDCLOUDS=$(CLOUDS)/derived
 $(BASECLOUDS)/kinematicCloud/kinematicCloud.C
 $(BASECLOUDS)/thermoCloud/thermoCloud.C
 $(BASECLOUDS)/nuclearCloud/nuclearCloud.C
+$(BASECLOUDS)/nuclearEulerCloud/nuclearEulerCloud.C
 $(BASECLOUDS)/reactingCloud/reactingCloud.C
 $(BASECLOUDS)/reactingMultiphaseCloud/reactingMultiphaseCloud.C
 $(BASECLOUDS)/reactingHeterogeneousCloud/reactingHeterogeneousCloud.C
@@ -38,6 +39,12 @@ $(THERMOPARCEL)/makeBasicThermoParcelSubmodels.C
 NUCLEARPARCEL=$(DERIVEDPARCELS)/basicNuclearParcel
 $(NUCLEARPARCEL)/defineBasicNuclearParcel.C
 $(NUCLEARPARCEL)/makeBasicNuclearParcelSubmodels.C
+
+
+/* two-phase Euler-aware nuclear parcel sub-models */
+NUCLEAREULERPARCEL=$(DERIVEDPARCELS)/basicNuclearEulerParcel
+$(NUCLEAREULERPARCEL)/defineBasicNuclearEulerParcel.C
+$(NUCLEAREULERPARCEL)/makeBasicNuclearEulerParcelSubmodels.C
 
 
 /* reacting parcel sub-models */

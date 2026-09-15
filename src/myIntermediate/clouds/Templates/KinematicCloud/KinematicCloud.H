@@ -202,9 +202,6 @@ protected:
             //- Dynamic viscosity [Pa.s]
             const volScalarField& mu_;
 
-            //- Vorticity [1/s]
-            const volVectorField& vort_;
-
 
         // Environmental properties
 
@@ -329,7 +326,6 @@ public:
             const volScalarField& rho,
             const volVectorField& U,
             const volScalarField& mu,
-            const volVectorField& vort,
             const dimensionedVector& g,
             bool readFields = true
         );
@@ -448,9 +444,6 @@ public:
 
                 //- Return carrier gas dynamic viscosity
                 inline const volScalarField& mu() const;
-
-                //- Return carrier gas vorticity
-                inline const volVectorField& vort() const;
 
 
             // Environmental properties

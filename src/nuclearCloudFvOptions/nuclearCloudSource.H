@@ -73,17 +73,13 @@ class nuclearCloudSource
         //  carrier fields by reference for the cloud's whole lifetime, so
         //  a tmp<> cannot be handed to it directly - the referenced field
         //  would be destroyed as soon as the tmp<> is, leaving a dangling
-        //  reference. rhoc_/muc_/vort_ are real, persistent fields owned
+        //  reference. rhoc_/muc_ are real, persistent fields owned
         //  by this option and refreshed every call, so the cloud always
         //  has something valid to point at.
         volScalarField rhoc_;
 
         //- Persistent copy of the carrier dynamic viscosity (same reason)
         volScalarField muc_;
-
-        //- Persistent vorticity of the carrier velocity, needed by the
-        //  nuclear parcel's thermophoresis force
-        volVectorField vort_;
 
         //- The cloud itself; created lazily on the first correct() call,
         //  once all phase fields are guaranteed to exist
@@ -95,7 +91,7 @@ class nuclearCloudSource
         //- Return the carrier phase looked up from the mesh's phaseSystem
         phaseModel& phase() const;
 
-        //- Refresh rhoc_/muc_/vort_ from the current phase fields, and
+        //- Refresh rhoc_/muc_ from the current phase fields, and
         //  build the cloud on the first call
         void updateCarrierFields();
 

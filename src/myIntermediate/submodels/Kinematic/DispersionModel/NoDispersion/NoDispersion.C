@@ -70,7 +70,6 @@ Foam::vector Foam::NoDispersion<CloudType>::update
     const vector& Uc,
     const scalar,
     const scalar,
-    const vector&,
     vector&,
     scalar&,
     scalar&

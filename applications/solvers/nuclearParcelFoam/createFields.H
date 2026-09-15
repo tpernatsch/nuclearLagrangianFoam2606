@@ -44,22 +44,6 @@ volVectorField U
     mesh
 );
 
-// Creating vorticity field
-Info<< "Creating field vorticity\n" << endl;
-volVectorField vort
-(
-    IOobject
-    (
-        "vort",
-        runTime.timeName(),
-        mesh,
-        IOobject::NO_READ,
-        IOobject::AUTO_WRITE
-    ),
-    mesh,
-    dimensionedVector("zero", dimensionSet(0, 0, -1, 0, 0, 0, 0), vector::zero)
-);
-
 #include "createPhi.H"
 Info<< "Reading thermophysical properties\n" << endl;
 #include "readThermophysicalProperties.H"

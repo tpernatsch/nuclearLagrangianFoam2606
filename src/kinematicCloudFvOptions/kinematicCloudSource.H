@@ -89,10 +89,6 @@ class kinematicCloudSource
         //- Persistent carrier dynamic viscosity field (see rhoc_)
         volScalarField muc_;
 
-        //- Persistent vorticity of the carrier velocity, refreshed every
-        //  correct() call since U changes every step
-        volVectorField vort_;
-
         //- The cloud itself; created lazily on the first correct() call
         autoPtr<basicKinematicCloud> cloud_;
 

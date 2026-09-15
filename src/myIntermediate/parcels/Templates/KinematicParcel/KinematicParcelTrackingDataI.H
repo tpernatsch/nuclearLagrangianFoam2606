@@ -63,18 +63,9 @@ inline Foam::KinematicParcel<ParcelType>::trackingData::trackingData
             cloud.mu()
         )
     ),
-    vortInterp_
-    (
-        interpolation<vector>::New
-        (
-            cloud.solution().interpolationSchemes(),
-            cloud.vort()
-        )
-    ),
     rhoc_(Zero),
     Uc_(Zero),
     muc_(Zero),
-    vortc_(Zero),
 
     volumeAverage_
     (
@@ -205,13 +196,6 @@ Foam::KinematicParcel<ParcelType>::trackingData::muInterp() const
 
 
 template<class ParcelType>
-inline const Foam::interpolation<Foam::vector>&
-Foam::KinematicParcel<ParcelType>::trackingData::vortInterp() const
-{
-    return *vortInterp_;
-}
-
-template<class ParcelType>
 inline const Foam::vector&
 Foam::KinematicParcel<ParcelType>::trackingData::g() const
 {
@@ -260,21 +244,6 @@ template<class ParcelType>
 inline Foam::scalar& Foam::KinematicParcel<ParcelType>::trackingData::muc()
 {
     return muc_;
-}
-
-
-template<class ParcelType>
-inline const Foam::vector&
-Foam::KinematicParcel<ParcelType>::trackingData::vortc() const
-{
-    return vortc_;
-}
-
-
-template<class ParcelType>
-inline Foam::vector& Foam::KinematicParcel<ParcelType>::trackingData::vortc()
-{
-    return vortc_;
 }
 
 

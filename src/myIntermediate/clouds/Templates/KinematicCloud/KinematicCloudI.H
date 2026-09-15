@@ -129,13 +129,6 @@ inline const Foam::volScalarField& Foam::KinematicCloud<CloudType>::mu() const
 
 
 template<class CloudType>
-inline const Foam::volVectorField& Foam::KinematicCloud<CloudType>::vort() const
-{
-    return vort_;
-}
-
-
-template<class CloudType>
 inline const Foam::dimensionedVector& Foam::KinematicCloud<CloudType>::g() const
 {
     return g_;

@@ -207,9 +207,6 @@ public:
                 //- Dynamic viscosity interpolator
                 autoPtr<interpolation<scalar>> muInterp_;
 
-                //- Vorticity interpolator
-                autoPtr<interpolation<vector>> vortInterp_;
-
 
             // Cached continuous phase properties
 
@@ -221,9 +218,6 @@ public:
 
                 //- Viscosity [Pa.s]
                 scalar muc_;
-
-                //- Vorticity [1/s]
-                vector vortc_;
 
 
             // MPPIC Averages
@@ -285,10 +279,6 @@ public:
             //- phase dynamic viscosity field
             inline const interpolation<scalar>& muInterp() const;
 
-            //- Return const access to the interpolator for continuous
-            //- phase vorticity field
-            inline const interpolation<vector>& vortInterp() const;
-
             //- Return the continuous phase density
             inline scalar rhoc() const;
 
@@ -306,12 +296,6 @@ public:
 
             //- Access the continuous phase viscosity
             inline scalar& muc();
-
-            //- Return the continuous phase vorticity
-            inline const vector& vortc() const;
-
-            //- Access the continuous phase vorticity
-            inline vector& vortc();
 
             // Return const access to the gravitational acceleration vector
             inline const vector& g() const;

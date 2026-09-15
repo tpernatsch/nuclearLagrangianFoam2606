@@ -54,13 +54,6 @@ Foam::NuclearCloud<CloudType>::constProps()
 
 
 template<class CloudType>
-inline const Foam::volVectorField& Foam::NuclearCloud<CloudType>::vort() const
-{
-    return vort_;
-}
-
-
-template<class CloudType>
 inline const Foam::volScalarField& Foam::NuclearCloud<CloudType>::T() const
 {
     return T_;

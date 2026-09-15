@@ -76,18 +76,6 @@ Foam::fv::kinematicCloudSource::kinematicCloudSource
         mesh_,
         mu0_
     ),
-    vort_
-    (
-        IOobject
-        (
-            name_ + ":vort",
-            mesh_.time().timeName(),
-            mesh_,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
-        ),
-        fvc::curl(mesh_.lookupObject<volVectorField>("U"))
-    ),
     cloud_(nullptr)
 {
     fieldNames_.setSize(1, "U");
@@ -108,8 +96,6 @@ void Foam::fv::kinematicCloudSource::correct(volVectorField& U)
         return;
     }
 
-    vort_ = fvc::curl(U);
-
     if (!cloud_)
     {
         cloud_.reset
@@ -120,7 +106,6 @@ void Foam::fv::kinematicCloudSource::correct(volVectorField& U)
                 rhoc_,
                 U,
                 muc_,
-                vort_,
                 g_
             )
         );

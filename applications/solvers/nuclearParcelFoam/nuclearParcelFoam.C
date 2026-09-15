@@ -114,8 +114,7 @@ int main(int argc, char *argv[])
             while (pimple.loop())
             {
                 #include "UEqn.H"
-                
-                vort = fvc::curl(U);
+
                 #include "TEqn.H"
 
                 while (pimple.correct())
