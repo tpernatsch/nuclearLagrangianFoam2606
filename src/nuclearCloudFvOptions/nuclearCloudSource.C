@@ -5,7 +5,7 @@ License
 
 #include "nuclearCloudSource.H"
 #include "fvcCurl.H"
-#include "uniformDimensionedFields.H"
+#include "gravityMeshObject.H"
 #include "addToRunTimeSelectionTable.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
@@ -30,12 +30,15 @@ namespace fv
 
 Foam::phaseModel& Foam::fv::nuclearCloudSource::phase() const
 {
-    return
-        const_cast<phaseModel&>
-        (
-            mesh_.lookupObject<phaseSystem>("phaseProperties")
-           .phases()[phaseName_]
-        );
+    // Avoids linking reactingMultiphaseSystem for phaseSystem's RTTI -
+    // look it up as the always-linked IOdictionary base and cast down
+    const IOdictionary& phaseProperties =
+        mesh_.lookupObject<IOdictionary>("phaseProperties");
+
+    const phaseSystem& fluid =
+        static_cast<const phaseSystem&>(phaseProperties);
+
+    return const_cast<phaseModel&>(fluid.phases()[phaseName_]);
 }
 
 
@@ -45,7 +48,6 @@ void Foam::fv::nuclearCloudSource::updateCarrierFields()
 
     rhoc_ = p.rho();
     muc_ = p.thermo().mu();
-    vort_ = fvc::curl(p.U());
 
     if (!cloud_)
     {
@@ -57,9 +59,8 @@ void Foam::fv::nuclearCloudSource::updateCarrierFields()
                 rhoc_,
                 p.URef(),
                 muc_,
-                vort_,
                 p.thermo().T(),
-                mesh_.lookupObject<uniformDimensionedVectorField>("g")
+                meshObjects::gravity::New(mesh_.time())
             )
         );
     }
@@ -102,18 +103,6 @@ Foam::fv::nuclearCloudSource::nuclearCloudSource
             IOobject::NO_WRITE
         ),
         phase().thermo().mu()
-    ),
-    vort_
-    (
-        IOobject
-        (
-            name_ + ":vort",
-            mesh_.time().timeName(),
-            mesh_,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
-        ),
-        fvc::curl(phase().U())
     ),
     cloud_(nullptr)
 {

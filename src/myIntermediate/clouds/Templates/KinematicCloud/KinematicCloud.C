@@ -345,7 +345,6 @@ Foam::KinematicCloud<CloudType>::KinematicCloud
     const volScalarField& rho,
     const volVectorField& U,
     const volScalarField& mu,
-    const volVectorField& vort,
     const dimensionedVector& g,
     bool readFields
 )
@@ -394,7 +393,6 @@ Foam::KinematicCloud<CloudType>::KinematicCloud
     rho_(rho),
     U_(U),
     mu_(mu),
-    vort_(vort),
     g_(g),
     pAmbient_(0.0),
     forces_
@@ -520,7 +518,6 @@ Foam::KinematicCloud<CloudType>::KinematicCloud
     rho_(c.rho_),
     U_(c.U_),
     mu_(c.mu_),
-    vort_(c.vort_),
     g_(c.g_),
     pAmbient_(c.pAmbient_),
     forces_(c.forces_),
@@ -634,7 +631,6 @@ Foam::KinematicCloud<CloudType>::KinematicCloud
     rho_(c.rho_),
     U_(c.U_),
     mu_(c.mu_),
-    vort_(c.vort_),
     g_(c.g_),
     pAmbient_(c.pAmbient_),
     forces_(*this, mesh),

@@ -116,9 +116,6 @@ protected:
             //- Dynamic viscosity [Pa.s]
             const volScalarField& muc_;
 
-            //- Vorticity [1/s]
-            const volVectorField& vort_;
-
             //- Temperature [K]
             const volScalarField& T_;
 
@@ -188,7 +185,6 @@ public:
             const volScalarField& rho,
             const volVectorField& U,
             const volScalarField& muc,
-            const volVectorField& vort,
             const dimensionedVector& g,
             const SLGThermo& thermo,
             bool readFields = true
@@ -244,9 +240,6 @@ public:
 
             //- Return const access to the carrier dynamic viscosity field
             inline const volScalarField& muc() const;
-
-            //- Return const access to the carrier vorticity field
-            inline const volVectorField& vort() const;
 
             //- Return const access to thermo package
             inline const SLGThermo& thermo() const;

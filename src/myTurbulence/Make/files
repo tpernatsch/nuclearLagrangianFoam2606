@@ -13,6 +13,9 @@ $(THERMOPARCEL)/makeBasicThermoParcelSubmodels.C
 NUCLEARPARCEL=$(DERIVEDPARCELS)/basicNuclearParcel
 $(NUCLEARPARCEL)/makeBasicNuclearParcelSubmodels.C
 
+NUCLEAREULERPARCEL=$(DERIVEDPARCELS)/basicNuclearEulerParcel
+$(NUCLEAREULERPARCEL)/makeBasicNuclearEulerParcelSubmodels.C
+
 REACTINGPARCEL=$(DERIVEDPARCELS)/basicReactingParcel
 $(REACTINGPARCEL)/makeBasicReactingParcelSubmodels.C
 

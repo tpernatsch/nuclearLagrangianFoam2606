@@ -114,9 +114,6 @@ protected:
 
         // References to the carrier fluid fields
 
-            //- Vorticity [1/s]
-            const volVectorField& vort_;
-
             //- Temperature [K]
             const volScalarField& T_;
 
@@ -190,7 +187,6 @@ public:
             const volScalarField& rho,
             const volVectorField& U,
             const volScalarField& muc,
-            const volVectorField& vort,
             const volScalarField& T,
             const dimensionedVector& g,
             bool readFields = true
@@ -243,9 +239,6 @@ public:
 
             //- Return access to the constant properties
             inline typename parcelType::constantProperties& constProps();
-
-            //- Return const access to the carrier vorticity field
-            inline const volVectorField& vort() const;
 
             //- Return const access to the carrier temperature field
             inline const volScalarField& T() const;

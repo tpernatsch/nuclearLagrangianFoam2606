@@ -6,7 +6,6 @@ basicNuclearCloud FP
     rhoInf,
     U,
     muc,
-    vort,
     T,
     g
 );

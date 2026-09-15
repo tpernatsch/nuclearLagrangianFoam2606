@@ -32,8 +32,6 @@ License
 
 #include "GradientDispersionRAS.H"
 #include "StochasticDispersionRAS.H"
-#include "FunctionYPlusDispersionRAS.H"
-#include "VorticityDispersionRAS.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -48,8 +46,6 @@ License
                                                                                \
     makeDispersionModelType(GradientDispersionRAS, CloudType);                 \
     makeDispersionModelType(StochasticDispersionRAS, CloudType);               \
-    makeDispersionModelType(FunctionYPlusDispersionRAS, CloudType);            \
-    makeDispersionModelType(VorticityDispersionRAS, CloudType);                \
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

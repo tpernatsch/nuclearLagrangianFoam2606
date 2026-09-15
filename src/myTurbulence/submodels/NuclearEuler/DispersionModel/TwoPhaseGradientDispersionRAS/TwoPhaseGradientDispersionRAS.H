@@ -5,7 +5,7 @@
     \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
 -------------------------------------------------------------------------------
-    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2026 Tommaso Pernatsch
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,19 +24,22 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::VorticityDispersionRAS
+    Foam::TwoPhaseGradientDispersionRAS
 
 Description
-    The velocity is perturbed in random direction, with a
-    Gaussian random number distribution with variance sigma.
-    where sigma is defined below
+    Direct port of GradientDispersionRAS to the secondary Euler phase: the
+    particle's velocity (as seen against phase 2) is perturbed in the
+    direction of -grad(k2), with a Gaussian random number distribution -
+    identical formula to the primary-phase model, evaluated with phase 2's
+    own k2/epsilon2 fields (see TwoPhaseDispersionRASModel) instead of the
+    primary phase's.
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef VorticityDispersionRAS_H
-#define VorticityDispersionRAS_H
+#ifndef TwoPhaseGradientDispersionRAS_H
+#define TwoPhaseGradientDispersionRAS_H
 
-#include "DispersionRASModel.H"
+#include "TwoPhaseDispersionRASModel.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -44,42 +47,66 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class VorticityDispersionRAS Declaration
+                Class TwoPhaseGradientDispersionRAS Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class CloudType>
-class VorticityDispersionRAS
+class TwoPhaseGradientDispersionRAS
 :
-    public DispersionRASModel<CloudType>
+    public TwoPhaseDispersionRASModel<CloudType>
 {
+protected:
+
+    // Protected data
+
+        // Locally cached turbulence fields
+
+            //- Gradient of k2
+            const volVectorField* gradk2Ptr_;
+
+            //- Take ownership of grad(k2)
+            mutable bool ownGradK2_;
+
+
 public:
 
     //- Runtime type information
-    TypeName("VorticityDispersionRAS");
+    TypeName("twoPhaseGradientDispersionRAS");
+
 
     // Constructors
 
         //- Construct from components
-        VorticityDispersionRAS(const dictionary& dict, CloudType& owner);
+        TwoPhaseGradientDispersionRAS
+        (
+            const dictionary& dict,
+            CloudType& owner
+        );
 
         //- Construct copy
-        VorticityDispersionRAS(const VorticityDispersionRAS<CloudType>& dm);
+        TwoPhaseGradientDispersionRAS
+        (
+            const TwoPhaseGradientDispersionRAS<CloudType>& dm
+        );
 
         //- Construct and return a clone
         virtual autoPtr<DispersionModel<CloudType>> clone() const
         {
             return autoPtr<DispersionModel<CloudType>>
             (
-                new VorticityDispersionRAS<CloudType>(*this)
+                new TwoPhaseGradientDispersionRAS<CloudType>(*this)
             );
         }
 
 
     //- Destructor
-    virtual ~VorticityDispersionRAS();
+    virtual ~TwoPhaseGradientDispersionRAS();
 
 
     // Member Functions
+
+        //- Cache carrier fields
+        virtual void cacheFields(const bool store);
 
         //- Update (disperse particles)
         virtual vector update
@@ -92,7 +119,6 @@ public:
             const vector& Uc,
             const scalar rhoc,
             const scalar muc,
-            const vector& vortc,
             vector& UTurb,
             scalar& tTurb,
             scalar& tTurbLoc
@@ -107,7 +133,7 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #ifdef NoRepository
-    #include "VorticityDispersionRAS.C"
+    #include "TwoPhaseGradientDispersionRAS.C"
 #endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

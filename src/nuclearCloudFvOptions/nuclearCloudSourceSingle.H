@@ -92,10 +92,6 @@ class nuclearCloudSourceSingle
         //- Persistent carrier dynamic viscosity field
         volScalarField muc_;
 
-        //- Persistent vorticity of the carrier velocity, refreshed every
-        //  correct() call
-        volVectorField vort_;
-
         //- The cloud itself; created lazily on the first correct() call
         autoPtr<basicNuclearCloud> cloud_;
 

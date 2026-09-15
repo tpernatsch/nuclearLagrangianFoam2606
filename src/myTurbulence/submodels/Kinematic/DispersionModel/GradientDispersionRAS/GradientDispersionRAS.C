@@ -102,7 +102,6 @@ Foam::vector Foam::GradientDispersionRAS<CloudType>::update
     const vector& Uc,
     const scalar rhoc,
     const scalar muc,
-    const vector& vortc,
     vector& UTurb,
     scalar& tTurb,
     scalar& tTurbLoc
