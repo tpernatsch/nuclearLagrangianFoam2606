@@ -26,16 +26,16 @@ License
 Class
     Foam::TwoPhaseBrownianMotionForce
 
-Group
-    grpLagrangianIntermediateForceSubModels
-
 Description
-    Two-phase-Euler-aware particle Brownian motion force.
+    Two-phase-Euler-aware particle Brownian motion force. Direct port of
+    BrownianMotionForce (myTurbulence) to the secondary Euler phase: the
+    same correlation is evaluated once per phase, each phase's own
+    turbulence kinetic energy located via its own registered turbulence
+    model (kModel()/k2Model()), exactly the way the single-phase force
+    locates its one turbulence model, and the two results are blended by
+    the particle's own phase-switch parameter chi.
 
-    Only usable with a cloud whose parcelType::trackingData exposes the
-    secondary-phase/chi accessors added by NuclearEulerParcel.
-
-    Reference (correlation, applied once per phase):
+    Reference:
     \verbatim
         Li, A., & Ahmadi, G. (1992).
         Dispersion and deposition of spherical particles from point sources
@@ -43,29 +43,12 @@ Description
         Aerosol science and technology, 16(4), 209-226.
     \endverbatim
 
-    Unlike myTurbulence's single-phase BrownianMotionForce (which looks
-    its turbulence kinetic energy up directly from a registered
-    turbulence model), this class reuses the primary/secondary phase
-    turbulence kinetic energy already interpolated into trackingData by
-    NuclearEulerParcel (td.k1c()/td.k2c()) - no separate mesh lookup is
-    needed here.
-
-    Two independent isotropic random kicks are drawn, one per phase
-    (each using that phase's own temperature/viscosity/turbulence
-    kinetic energy), and blended with the particle's own phase-switch
-    parameter chi:
-    \f[
-        \mathbf{F} = \mathbf{F}_1 (1-\chi) + \mathbf{F}_2 \chi
-    \f]
-    chi is currently always 0 (no switching model exists yet), so this
-    reduces exactly to a single-phase Brownian force evaluated against
-    the primary phase only.
-
     Entries
     \table
         Property   | Description                       | Type   | Reqd | Deflt
         lambda     | Molecular free path length         | scalar | yes  | -
         turbulence | Use turbulence                     | bool   | yes  | -
+        spherical  | Spherical instead of cubic distribution | bool | no | true
     \endtable
 
 Usage
@@ -112,11 +95,38 @@ class TwoPhaseBrownianMotionForce
 {
     // Private Data
 
+        //- Reference to the cloud random number generator
+        Random& rndGen_;
+
         //- Molecular free path length [m]
         const scalar lambda_;
 
+        //- Pointer to the primary phase turbulence kinetic energy field
+        const volScalarField* kPtr_;
+
+        //- Pointer to the secondary phase turbulence kinetic energy field
+        const volScalarField* k2Ptr_;
+
         //- Turbulence flag
         const bool turbulence_;
+
+        //- Local ownership of the primary phase turbulence k field
+        bool ownK_;
+
+        //- Local ownership of the secondary phase turbulence k field
+        bool ownK2_;
+
+        //- Spherical vs cubic (transitional)
+        const bool useSpherical_;
+
+
+    // Private Member Functions
+
+        //- Return the primary phase k field from its turbulence model
+        tmp<volScalarField> kModel() const;
+
+        //- Return the secondary phase k field from its turbulence model
+        tmp<volScalarField> k2Model() const;
 
 
 public:
@@ -149,21 +159,24 @@ public:
 
 
     //- Destructor
-    virtual ~TwoPhaseBrownianMotionForce() = default;
+    virtual ~TwoPhaseBrownianMotionForce();
 
 
     // Member Functions
 
-        // Access
+    // Access
 
-            //- The molecular free path length [m]
-            scalar lambda() const noexcept { return lambda_; }
+        //- The molecular free path length [m]
+        scalar lambda() const noexcept { return lambda_; }
 
-            //- The turbulence flag
-            bool turbulence() const noexcept { return turbulence_; }
+        //- The turbulence flag
+        bool turbulence() const noexcept { return turbulence_; }
 
 
         // Evaluation
+
+            //- Cache fields
+            virtual void cacheFields(const bool store);
 
             //- Calculate the coupled force
             virtual forceSuSp calcCoupled

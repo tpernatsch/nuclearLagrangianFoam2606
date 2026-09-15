@@ -30,7 +30,10 @@ Description
         its own inherited, unmodified primary-phase dispersionModel entry;
       - the new secondary-phase (TwoPhase*DispersionRAS) models, only
         selectable through NuclearEulerCloud::dispersion2()'s
-        dispersionModel2 entry.
+        dispersionModel2 entry;
+      - the two-phase turbulence-dependent particle force
+        (TwoPhaseBrownianMotionForce), alongside the plain two-phase
+        forces registered by myIntermediate's makeNuclearEulerParcelForces.
 
 \*---------------------------------------------------------------------------*/
 
@@ -38,6 +41,7 @@ Description
 
 #include "makeParcelTurbulenceDispersionModels.H"
 #include "makeNuclearEulerParcelTurbulenceDispersionModels.H"
+#include "makeNuclearEulerParcelTurbulenceForces.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -45,6 +49,7 @@ namespace Foam
 {
     makeParcelTurbulenceDispersionModels(basicNuclearEulerCloud);
     makeNuclearEulerParcelTurbulenceDispersionModels(basicNuclearEulerCloud);
+    makeNuclearEulerParcelTurbulenceForces(basicNuclearEulerCloud);
 }
 
 

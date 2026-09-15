@@ -24,41 +24,26 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Description
-    Registers the two-phase-Euler-aware particle force models -
-    additional selectable force types, alongside (not instead of) every
-    plain single-phase force already registered via makeNuclearParcelForces
-    for a given CloudType. Only usable with a cloud whose parcelType
-    exposes the secondary-phase/chi accessors added by NuclearEulerParcel
-    (i.e. basicNuclearEulerCloud and its derivatives).
-
-    TwoPhaseBrownianMotionForce lives in myTurbulence instead (alongside
-    the single-phase BrownianMotionForce it mirrors) - see
-    makeNuclearEulerParcelTurbulenceForces.H.
+    Registers the two-phase-Euler-aware turbulence-dependent particle
+    force models - mirrors makeThermoParcelTurbulenceForces.H's role for
+    the single-phase BrownianMotionForce, into the same runtime-selection
+    table as the plain forces registered by makeNuclearEulerParcelForces
+    (myIntermediate).
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef makeNuclearEulerParcelForces_H
-#define makeNuclearEulerParcelForces_H
+#ifndef makeNuclearEulerParcelTurbulenceForces_H
+#define makeNuclearEulerParcelTurbulenceForces_H
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-#include "TwoPhaseGravityForce.H"
-#include "TwoPhaseSphereDragForce.H"
-#include "TwoPhaseSaffmanMeiLiftForce.H"
-#include "TwoPhasePressureGradientForce.H"
-#include "TwoPhaseVirtualMassForce.H"
-#include "TwoPhaseThermophoreticForce.H"
+#include "TwoPhaseBrownianMotionForce.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-#define makeNuclearEulerParcelForces(CloudType)                              \
-                                                                              \
-    makeParticleForceModelType(TwoPhaseGravityForce, CloudType);             \
-    makeParticleForceModelType(TwoPhaseSphereDragForce, CloudType);          \
-    makeParticleForceModelType(TwoPhaseSaffmanMeiLiftForce, CloudType);      \
-    makeParticleForceModelType(TwoPhasePressureGradientForce, CloudType);    \
-    makeParticleForceModelType(TwoPhaseVirtualMassForce, CloudType);         \
-    makeParticleForceModelType(TwoPhaseThermophoreticForce, CloudType);
+#define makeNuclearEulerParcelTurbulenceForces(CloudType)                     \
+                                                                               \
+    makeParticleForceModelType(TwoPhaseBrownianMotionForce, CloudType);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
