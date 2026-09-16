@@ -71,7 +71,7 @@ inline Foam::NuclearEulerParcel<ParcelType>::NuclearEulerParcel
 )
 :
     ParcelType(mesh, coordinates, celli, tetFacei, tetPti),
-    chi_(false)
+    chi_(0)
 {}
 
 
@@ -84,7 +84,7 @@ inline Foam::NuclearEulerParcel<ParcelType>::NuclearEulerParcel
 )
 :
     ParcelType(mesh, position, celli),
-    chi_(false)
+    chi_(0)
 {}
 
 
@@ -124,7 +124,7 @@ inline Foam::NuclearEulerParcel<ParcelType>::NuclearEulerParcel
         torque0,
         constProps
     ),
-    chi_(false)
+    chi_(0)
 {}
 
 
@@ -141,14 +141,14 @@ Foam::NuclearEulerParcel<ParcelType>::constantProperties::alphaSmall() const
 // * * * * * * * * * * NuclearEulerParcel Member Functions * * * * * * * * * //
 
 template<class ParcelType>
-inline bool Foam::NuclearEulerParcel<ParcelType>::chi() const
+inline Foam::scalar Foam::NuclearEulerParcel<ParcelType>::chi() const
 {
     return chi_;
 }
 
 
 template<class ParcelType>
-inline bool& Foam::NuclearEulerParcel<ParcelType>::chi()
+inline Foam::scalar& Foam::NuclearEulerParcel<ParcelType>::chi()
 {
     return chi_;
 }

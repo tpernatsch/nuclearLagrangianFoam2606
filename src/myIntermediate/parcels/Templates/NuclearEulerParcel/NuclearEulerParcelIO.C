@@ -63,7 +63,7 @@ Foam::NuclearEulerParcel<ParcelType>::NuclearEulerParcel
 )
 :
     ParcelType(mesh, is, readFields, newFormat),
-    chi_(false)
+    chi_(0)
 {
     if (readFields)
     {
@@ -91,7 +91,7 @@ void Foam::NuclearEulerParcel<ParcelType>::readFields(CloudType& c)
 
     ParcelType::readFields(c);
 
-    IOField<bool> chi(c.fieldIOobject("chi", IOobject::MUST_READ), readOnProc);
+    IOField<scalar> chi(c.fieldIOobject("chi", IOobject::MUST_READ), readOnProc);
     c.checkFieldIOobject(c, chi);
 
     label i = 0;
@@ -113,7 +113,7 @@ void Foam::NuclearEulerParcel<ParcelType>::writeFields(const CloudType& c)
     const label np = c.size();
     const bool writeOnProc = c.size();
 
-    IOField<bool> chi(c.fieldIOobject("chi", IOobject::NO_READ), np);
+    IOField<scalar> chi(c.fieldIOobject("chi", IOobject::NO_READ), np);
 
     label i = 0;
     for (const NuclearEulerParcel<ParcelType>& p : c)
@@ -160,7 +160,7 @@ void Foam::NuclearEulerParcel<ParcelType>::readObjects
 
     if (!c.size()) return;
 
-    auto& chi = cloud::lookupIOField<bool>("chi", obr);
+    auto& chi = cloud::lookupIOField<scalar>("chi", obr);
 
     label i = 0;
     for (NuclearEulerParcel<ParcelType>& p : c)
@@ -184,7 +184,7 @@ void Foam::NuclearEulerParcel<ParcelType>::writeObjects
 
     const label np = c.size();
 
-    auto& chi = cloud::createIOField<bool>("chi", np, obr);
+    auto& chi = cloud::createIOField<scalar>("chi", np, obr);
 
     label i = 0;
     for (const NuclearEulerParcel<ParcelType>& p : c)

@@ -93,8 +93,8 @@ void Foam::NuclearEulerParcel<ParcelType>::updateChi
     trackingData& td
 )
 {
-    // One-way switch: once true, never reverts
-    if (this->chi_)
+    // One-way switch: once 1, never reverts
+    if (this->chi_ != 0)
     {
         return;
     }
@@ -107,7 +107,7 @@ void Foam::NuclearEulerParcel<ParcelType>::updateChi
 
     if (cloud.rndGen().template sample01<scalar>() < pSwitch)
     {
-        this->chi_ = true;
+        this->chi_ = 1;
     }
 }
 
@@ -125,7 +125,7 @@ void Foam::NuclearEulerParcel<ParcelType>::calcDispersion
     ParcelType::calcDispersion(cloud, td, dt);
 
     // Secondary phase's dispersion, only when switched and RAS
-    if (this->chi_ && cloud.k2IsRAS())
+    if (this->chi_ != 0 && cloud.k2IsRAS())
     {
         td.U2c() = cloud.dispersion2().update
         (

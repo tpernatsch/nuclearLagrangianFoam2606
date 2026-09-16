@@ -1,0 +1,21 @@
+#!/bin/sh
+cd "${0%/*}" || exit                                # Run from this directory
+set -e
+
+# Libraries, in dependency order (myTurbulence links against myIntermediate;
+# the two FvOptions libraries link against both)
+wmake src/myIntermediate
+wmake src/myTurbulence
+wmake src/LogMoM
+wmake src/flotation
+wmake src/nuclear
+wmake src/kinematicCloudFvOptions
+wmake src/nuclearCloudFvOptions
+
+# Solvers and utilities
+wmake applications/solvers/nuclearParcelFoam
+wmake applications/solvers/msfrParcelFoam
+wmake applications/solvers/bubbleFoam
+wmake applications/utilities/setLogNormal
+
+#------------------------------------------------------------------------------

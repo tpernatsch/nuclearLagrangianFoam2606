@@ -58,14 +58,15 @@ Description
     own two-phase-aware dispersion model to generalise that, which is
     out of scope here.
 
-    A new per-parcel switch parameter, chi_ (a bool, always initialised to
-    false), selects which phase's properties the *coupled* particle forces
-    (drag, lift, gravity, virtual mass, pressure gradient, thermophoresis,
-    Brownian motion) are evaluated against: F = F1*(1-chi) + F2*chi, where
-    F1/F2 are the same force computed with the primary/secondary phase's
-    fields respectively, and chi (implicitly converted to 0/1) always
-    selects one or the other in full - the particle is either in the
-    primary phase or the secondary phase, never a blend of both. The
+    A new per-parcel switch parameter, chi_ (a scalar holding only 0 or 1,
+    always initialised to 0 - kept as scalar rather than bool so ParaView
+    can read/colour it, which it cannot do for a boolField), selects which
+    phase's properties the *coupled* particle forces (drag, lift, gravity,
+    virtual mass, pressure gradient, thermophoresis, Brownian motion) are
+    evaluated against: F = F1*(1-chi) + F2*chi, where F1/F2 are the same
+    force computed with the primary/secondary phase's fields respectively -
+    the particle is either in the primary phase or the secondary phase,
+    never a blend of both. The
     concrete two-phase force models themselves live in
     submodels/NuclearEuler/ParticleForces alongside a new
     makeNuclearEulerParcelForces registration macro - see the
@@ -338,15 +339,16 @@ protected:
 
         // Parcel properties
 
-            //- Phase-switch parameter: false = primary phase, true =
-            //- secondary phase, never a blend of both
-            bool chi_;
+            //- Phase-switch parameter: 0 = primary phase, 1 = secondary
+            //- phase, never a blend of both. Scalar (not bool) so
+            //- ParaView can read/colour it.
+            scalar chi_;
 
 
     // Protected Member Functions
 
-        //- Stochastically switch chi from false to true using the
-        //- cloud's ChiSwitchModel rate
+        //- Stochastically switch chi from 0 to 1 using the cloud's
+        //- ChiSwitchModel rate
         template<class TrackCloudType>
         void updateChi(TrackCloudType& cloud, trackingData& td);
 
@@ -481,13 +483,13 @@ public:
         // Access
 
             //- Return const access to the phase-switch parameter chi
-            inline bool chi() const;
+            inline scalar chi() const;
 
 
         // Edit
 
             //- Return access to the phase-switch parameter chi
-            inline bool& chi();
+            inline scalar& chi();
 
 
     // Main calculation loop
