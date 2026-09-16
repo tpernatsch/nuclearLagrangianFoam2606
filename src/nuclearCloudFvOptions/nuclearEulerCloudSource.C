@@ -87,13 +87,16 @@ void Foam::fv::nuclearEulerCloudSource::updateCarrierFields()
     phaseModel& p = phase();
     phaseModel& p2 = phase2();
 
-    alpha1c_ = p.alpha();
+    // phaseModel derives from volScalarField (it *is* the alpha field);
+    // phaseModel::alpha() is a same-named but unrelated thermo interface
+    // method (thermal diffusivity, kg/m/s), not the volume fraction.
+    alpha1c_ = p;
     rhoc_ = p.rho();
     muc_ = p.thermo().mu();
     k1c_ = turbulenceByName(phaseName_).k();
     epsilon1c_ = turbulenceByName(phaseName_).epsilon();
 
-    alpha2c_ = p2.alpha();
+    alpha2c_ = p2;
     rho2c_ = p2.rho();
     mu2c_ = p2.thermo().mu();
     k2c_ = turbulenceByName(phase2Name_).k();
@@ -158,7 +161,7 @@ Foam::fv::nuclearEulerCloudSource::nuclearEulerCloudSource
             IOobject::NO_READ,
             IOobject::NO_WRITE
         ),
-        phaseByName(phaseName_).alpha()
+        phaseByName(phaseName_)
     ),
     rhoc_
     (
@@ -218,7 +221,7 @@ Foam::fv::nuclearEulerCloudSource::nuclearEulerCloudSource
             IOobject::NO_READ,
             IOobject::NO_WRITE
         ),
-        phaseByName(phase2Name_).alpha()
+        phaseByName(phase2Name_)
     ),
     rho2c_
     (
