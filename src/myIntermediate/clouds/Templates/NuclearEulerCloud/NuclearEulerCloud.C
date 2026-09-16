@@ -219,12 +219,31 @@ void Foam::NuclearEulerCloud<CloudType>::info()
 {
     CloudType::info();
 
+    label nSwitched = 0;
+    label nParcels = 0;
+    for (const parcelType& p : *this)
+    {
+        if (p.chi() != 0)
+        {
+            ++nSwitched;
+        }
+
+        ++nParcels;
+    }
+    reduce(nSwitched, sumOp<label>());
+    reduce(nParcels, sumOp<label>());
+
     Log_<< "    Secondary-phase volume fraction min/max = "
         << gMin(alpha2_.primitiveField())
         << ", " << gMax(alpha2_.primitiveField()) << nl
         << "    Secondary-phase temperature min/max     = "
         << gMin(T2_.primitiveField())
-        << ", " << gMax(T2_.primitiveField()) << endl;
+        << ", " << gMax(T2_.primitiveField()) << nl
+        << "    Secondary-phase diameter min/max        = "
+        << gMin(d2_.primitiveField())
+        << ", " << gMax(d2_.primitiveField()) << nl
+        << "    Parcels switched to secondary phase     = "
+        << nSwitched << " of " << nParcels << endl;
 }
 
 
