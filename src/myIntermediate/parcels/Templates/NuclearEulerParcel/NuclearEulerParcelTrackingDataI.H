@@ -114,6 +114,14 @@ inline Foam::NuclearEulerParcel<ParcelType>::trackingData::trackingData
             cloud.epsilon2()
         )
     ),
+    d2Interp_
+    (
+        interpolation<scalar>::New
+        (
+            cloud.solution().interpolationSchemes(),
+            cloud.d2()
+        )
+    ),
     alpha1c_(Zero),
     alpha2c_(Zero),
     U2c_(Zero),
@@ -123,7 +131,8 @@ inline Foam::NuclearEulerParcel<ParcelType>::trackingData::trackingData
     k1c_(Zero),
     epsilon1c_(Zero),
     k2c_(Zero),
-    epsilon2c_(Zero)
+    epsilon2c_(Zero),
+    d2c_(Zero)
 {}
 
 
@@ -204,6 +213,14 @@ inline const Foam::interpolation<Foam::scalar>&
 Foam::NuclearEulerParcel<ParcelType>::trackingData::epsilon2Interp() const
 {
     return *epsilon2Interp_;
+}
+
+
+template<class ParcelType>
+inline const Foam::interpolation<Foam::scalar>&
+Foam::NuclearEulerParcel<ParcelType>::trackingData::d2Interp() const
+{
+    return *d2Interp_;
 }
 
 
@@ -364,6 +381,22 @@ inline Foam::scalar&
 Foam::NuclearEulerParcel<ParcelType>::trackingData::epsilon2c()
 {
     return epsilon2c_;
+}
+
+
+template<class ParcelType>
+inline Foam::scalar
+Foam::NuclearEulerParcel<ParcelType>::trackingData::d2c() const
+{
+    return d2c_;
+}
+
+
+template<class ParcelType>
+inline Foam::scalar&
+Foam::NuclearEulerParcel<ParcelType>::trackingData::d2c()
+{
+    return d2c_;
 }
 
 

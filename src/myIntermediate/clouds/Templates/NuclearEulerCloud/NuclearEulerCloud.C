@@ -59,9 +59,11 @@ Foam::NuclearEulerCloud<CloudType>::NuclearEulerCloud
     epsilon1_(epsilon1),
     k2_(phase2.k),
     epsilon2_(phase2.epsilon),
+    d2_(phase2.d),
     k1IsRAS_(k1IsRAS),
     k2IsRAS_(phase2.isRAS),
-    dispersion2_(nullptr)
+    dispersion2_(nullptr),
+    chiSwitchModel_(nullptr)
 {
     // dispersionModel2 selects the secondary-phase dispersion model,
     // reusing DispersionModel::New()'s hardcoded "dispersionModel" key
@@ -89,6 +91,15 @@ Foam::NuclearEulerCloud<CloudType>::NuclearEulerCloud
             *this
         ).ptr()
     );
+
+    chiSwitchModel_.reset
+    (
+        ChiSwitchModel<nuclearEulerCloudType>::New
+        (
+            this->subModelProperties(),
+            *this
+        ).ptr()
+    );
 }
 
 
@@ -112,9 +123,11 @@ Foam::NuclearEulerCloud<CloudType>::NuclearEulerCloud
     epsilon1_(c.epsilon1_),
     k2_(c.k2_),
     epsilon2_(c.epsilon2_),
+    d2_(c.d2_),
     k1IsRAS_(c.k1IsRAS_),
     k2IsRAS_(c.k2IsRAS_),
-    dispersion2_(c.dispersion2_->clone())
+    dispersion2_(c.dispersion2_->clone()),
+    chiSwitchModel_(c.chiSwitchModel_->clone())
 {}
 
 
@@ -139,9 +152,11 @@ Foam::NuclearEulerCloud<CloudType>::NuclearEulerCloud
     epsilon1_(c.epsilon1_),
     k2_(c.k2_),
     epsilon2_(c.epsilon2_),
+    d2_(c.d2_),
     k1IsRAS_(c.k1IsRAS_),
     k2IsRAS_(c.k2IsRAS_),
-    dispersion2_(nullptr)
+    dispersion2_(nullptr),
+    chiSwitchModel_(nullptr)
 {}
 
 

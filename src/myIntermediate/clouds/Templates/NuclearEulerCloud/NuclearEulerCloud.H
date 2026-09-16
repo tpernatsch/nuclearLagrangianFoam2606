@@ -97,6 +97,7 @@ SourceFiles
 #include "NuclearCloud.H"
 #include "nuclearEulerCloud.H"
 #include "DispersionModel.H"
+#include "ChiSwitchModel.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -180,6 +181,9 @@ protected:
             //- Secondary phase turbulence dissipation rate [m2/s3]
             const volScalarField& epsilon2_;
 
+            //- Secondary phase characteristic (Sauter) diameter [m]
+            const volScalarField& d2_;
+
             //- True if the primary phase's turbulence model is RAS
             const bool k1IsRAS_;
 
@@ -189,6 +193,9 @@ protected:
             //- Dispersion model for the secondary phase
             autoPtr<DispersionModel<typename CloudType::kinematicCloudType>>
                 dispersion2_;
+
+            //- Chi-switch rate model
+            autoPtr<ChiSwitchModel<nuclearEulerCloudType>> chiSwitchModel_;
 
 
 public:
@@ -284,6 +291,9 @@ public:
             //- epsilon
             inline const volScalarField& epsilon2() const;
 
+            //- Return const access to the secondary phase diameter
+            inline const volScalarField& d2() const;
+
             //- Return true if the primary phase's turbulence model is RAS
             inline bool k1IsRAS() const;
 
@@ -300,6 +310,13 @@ public:
             //- model
             inline DispersionModel<typename CloudType::kinematicCloudType>&
                 dispersion2();
+
+            //- Return const access to the chi-switch rate model
+            inline const ChiSwitchModel<nuclearEulerCloudType>&
+                chiSwitchModel() const;
+
+            //- Return non-const access to the chi-switch rate model
+            inline ChiSwitchModel<nuclearEulerCloudType>& chiSwitchModel();
 
 
         // Cloud evolution functions

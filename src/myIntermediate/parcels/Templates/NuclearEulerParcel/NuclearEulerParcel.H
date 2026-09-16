@@ -122,9 +122,6 @@ public:
             //- denominator
             demandDrivenEntry<scalar> alphaSmall_;
 
-            //- Rate constant for the placeholder chi-switching model
-            demandDrivenEntry<scalar> chiSwitchGamma_;
-
 
     public:
 
@@ -144,9 +141,6 @@ public:
 
             //- Return const access to the void-fraction-sum floor
             inline scalar alphaSmall() const;
-
-            //- Return const access to the chi-switch rate constant
-            inline scalar chiSwitchGamma() const;
     };
 
 
@@ -191,6 +185,9 @@ public:
                 //- Secondary phase turbulence epsilon interpolator
                 autoPtr<interpolation<scalar>> epsilon2Interp_;
 
+                //- Secondary phase diameter interpolator
+                autoPtr<interpolation<scalar>> d2Interp_;
+
 
             // Cached values at the particle position
 
@@ -223,6 +220,9 @@ public:
 
                 //- Secondary phase turbulence dissipation rate [m2/s3]
                 scalar epsilon2c_;
+
+                //- Secondary phase diameter [m]
+                scalar d2c_;
 
 
     public:
@@ -282,6 +282,10 @@ public:
             //- epsilon interpolator
             inline const interpolation<scalar>& epsilon2Interp() const;
 
+            //- Return const access to the secondary phase diameter
+            //- interpolator
+            inline const interpolation<scalar>& d2Interp() const;
+
             //- Return/access the primary phase volume fraction
             inline scalar alpha1c() const;
             inline scalar& alpha1c();
@@ -321,6 +325,10 @@ public:
             //- Return/access the secondary phase turbulence epsilon
             inline scalar epsilon2c() const;
             inline scalar& epsilon2c();
+
+            //- Return/access the secondary phase diameter
+            inline scalar d2c() const;
+            inline scalar& d2c();
     };
 
 
@@ -337,9 +345,10 @@ protected:
 
     // Protected Member Functions
 
-        //- Placeholder chi-switching model, for testing only
+        //- Stochastically switch chi from false to true using the
+        //- cloud's ChiSwitchModel rate
         template<class TrackCloudType>
-        void updateChi(TrackCloudType& cloud);
+        void updateChi(TrackCloudType& cloud, trackingData& td);
 
         //- Calculate new particle temperature from a void-fraction
         //- weighted, two-phase convective heat transfer closure

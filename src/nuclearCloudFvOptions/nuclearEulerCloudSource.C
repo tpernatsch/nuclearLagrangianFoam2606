@@ -98,6 +98,7 @@ void Foam::fv::nuclearEulerCloudSource::updateCarrierFields()
     mu2c_ = p2.thermo().mu();
     k2c_ = turbulenceByName(phase2Name_).k();
     epsilon2c_ = turbulenceByName(phase2Name_).epsilon();
+    d2c_ = p2.d();
 
     if (!cloud_)
     {
@@ -124,6 +125,7 @@ void Foam::fv::nuclearEulerCloudSource::updateCarrierFields()
                     p2.thermo().T(),
                     k2c_,
                     epsilon2c_,
+                    d2c_,
                     isRASByName(phase2Name_)
                 )
             )
@@ -265,6 +267,18 @@ Foam::fv::nuclearEulerCloudSource::nuclearEulerCloudSource
             IOobject::NO_WRITE
         ),
         turbulenceByName(phase2Name_).epsilon()
+    ),
+    d2c_
+    (
+        IOobject
+        (
+            name_ + ":d2",
+            mesh_.time().timeName(),
+            mesh_,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        phaseByName(phase2Name_).d()
     ),
     cloud_(nullptr)
 {

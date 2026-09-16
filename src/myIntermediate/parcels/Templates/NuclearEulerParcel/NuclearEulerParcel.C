@@ -79,12 +79,19 @@ void Foam::NuclearEulerParcel<ParcelType>::setCellValues
         max(td.k2Interp().interpolate(this->coordinates(), tetIs), 0);
     td.epsilon2c() =
         max(td.epsilon2Interp().interpolate(this->coordinates(), tetIs), 0);
+
+    td.d2c() =
+        max(td.d2Interp().interpolate(this->coordinates(), tetIs), 0);
 }
 
 
 template<class ParcelType>
 template<class TrackCloudType>
-void Foam::NuclearEulerParcel<ParcelType>::updateChi(TrackCloudType& cloud)
+void Foam::NuclearEulerParcel<ParcelType>::updateChi
+(
+    TrackCloudType& cloud,
+    trackingData& td
+)
 {
     // One-way switch: once true, never reverts
     if (this->chi_)
@@ -92,7 +99,7 @@ void Foam::NuclearEulerParcel<ParcelType>::updateChi(TrackCloudType& cloud)
         return;
     }
 
-    const scalar gamma = cloud.constProps().chiSwitchGamma();
+    const scalar gamma = cloud.chiSwitchModel().gamma(*this, td);
 
     // Evaluated against the Eulerian step, not the Lagrangian sub-step
     const scalar deltaT = cloud.mesh().time().deltaTValue();
@@ -239,8 +246,7 @@ void Foam::NuclearEulerParcel<ParcelType>::calc
     const scalar dt
 )
 {
-    // Placeholder chi-switching model (testing only, see updateChi())
-    this->updateChi(cloud);
+    this->updateChi(cloud, td);
 
     // Define local properties at beginning of time step
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

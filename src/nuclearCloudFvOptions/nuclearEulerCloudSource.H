@@ -113,6 +113,9 @@ class nuclearEulerCloudSource
             //- Secondary phase turbulence dissipation rate
             volScalarField epsilon2c_;
 
+            //- Secondary phase (Sauter) diameter
+            volScalarField d2c_;
+
         //- The cloud itself; created lazily on the first correct() call,
         //  once all phase fields are guaranteed to exist
         autoPtr<basicNuclearEulerCloud> cloud_;

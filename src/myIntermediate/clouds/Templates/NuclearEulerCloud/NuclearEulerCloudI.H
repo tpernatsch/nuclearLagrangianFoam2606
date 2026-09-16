@@ -114,6 +114,14 @@ Foam::NuclearEulerCloud<CloudType>::epsilon2() const
 
 
 template<class CloudType>
+inline const Foam::volScalarField&
+Foam::NuclearEulerCloud<CloudType>::d2() const
+{
+    return d2_;
+}
+
+
+template<class CloudType>
 inline bool Foam::NuclearEulerCloud<CloudType>::k1IsRAS() const
 {
     return k1IsRAS_;
@@ -140,6 +148,22 @@ inline Foam::DispersionModel<typename CloudType::kinematicCloudType>&
 Foam::NuclearEulerCloud<CloudType>::dispersion2()
 {
     return *dispersion2_;
+}
+
+
+template<class CloudType>
+inline const Foam::ChiSwitchModel<typename Foam::NuclearEulerCloud<CloudType>::nuclearEulerCloudType>&
+Foam::NuclearEulerCloud<CloudType>::chiSwitchModel() const
+{
+    return *chiSwitchModel_;
+}
+
+
+template<class CloudType>
+inline Foam::ChiSwitchModel<typename Foam::NuclearEulerCloud<CloudType>::nuclearEulerCloudType>&
+Foam::NuclearEulerCloud<CloudType>::chiSwitchModel()
+{
+    return *chiSwitchModel_;
 }
 
 

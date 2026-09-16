@@ -32,8 +32,7 @@ inline Foam::NuclearEulerParcel<ParcelType>::constantProperties::
 constantProperties()
 :
     ParcelType::constantProperties(),
-    alphaSmall_(this->dict_, 1e-6),
-    chiSwitchGamma_(this->dict_, 0.0)
+    alphaSmall_(this->dict_, 1e-6)
 {}
 
 
@@ -45,8 +44,7 @@ constantProperties
 )
 :
     ParcelType::constantProperties(cp),
-    alphaSmall_(cp.alphaSmall_),
-    chiSwitchGamma_(cp.chiSwitchGamma_)
+    alphaSmall_(cp.alphaSmall_)
 {}
 
 
@@ -58,8 +56,7 @@ constantProperties
 )
 :
     ParcelType::constantProperties(parentDict),
-    alphaSmall_(this->dict_, "alphaSmall", 1e-6),
-    chiSwitchGamma_(this->dict_, "chiSwitchGamma", 0.0)
+    alphaSmall_(this->dict_, "alphaSmall", 1e-6)
 {}
 
 
@@ -138,15 +135,6 @@ inline Foam::scalar
 Foam::NuclearEulerParcel<ParcelType>::constantProperties::alphaSmall() const
 {
     return alphaSmall_.value();
-}
-
-
-template<class ParcelType>
-inline Foam::scalar
-Foam::NuclearEulerParcel<ParcelType>::constantProperties::chiSwitchGamma()
-const
-{
-    return chiSwitchGamma_.value();
 }
 
 
