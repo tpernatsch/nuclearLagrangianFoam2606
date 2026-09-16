@@ -42,6 +42,7 @@ Description
 #include "makeNuclearParcelForces.H" // nuclear variant
 #include "makeNuclearEulerParcelForces.H" // two-phase-Euler variant
 #include "makeParcelDispersionModels.H"
+#include "makeNuclearEulerParcelChiSwitchModels.H"
 #include "makeNuclearParcelInjectionModels.H" // nuclear variant
 #include "makeParcelPatchInteractionModels.H"
 #include "makeParcelStochasticCollisionModels.H"
@@ -64,6 +65,7 @@ makeNuclearParcelCloudFunctionObjects(basicNuclearEulerCloud);
 makeNuclearParcelForces(basicNuclearEulerCloud);
 makeNuclearEulerParcelForces(basicNuclearEulerCloud);
 makeParcelDispersionModels(basicNuclearEulerCloud);
+makeNuclearEulerParcelChiSwitchModels(basicNuclearEulerCloud);
 makeNuclearParcelInjectionModels(basicNuclearEulerCloud);
 makeParcelPatchInteractionModels(basicNuclearEulerCloud);
 makeParcelStochasticCollisionModels(basicNuclearEulerCloud);

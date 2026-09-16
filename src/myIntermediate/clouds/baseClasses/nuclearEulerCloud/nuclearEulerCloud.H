@@ -90,6 +90,9 @@ public:
     //- Turbulence dissipation rate [m2/s3]
     const volScalarField& epsilon;
 
+    //- Characteristic (Sauter) diameter [m]
+    const volScalarField& d;
+
     //- True if this phase's turbulence model is RAS (gates two-phase
     //- dispersion - see NuclearEulerParcel::calcDispersion())
     const bool isRAS;
@@ -105,6 +108,7 @@ public:
         const volScalarField& T,
         const volScalarField& k,
         const volScalarField& epsilon,
+        const volScalarField& d,
         const bool isRAS
     )
     :
@@ -115,6 +119,7 @@ public:
         T(T),
         k(k),
         epsilon(epsilon),
+        d(d),
         isRAS(isRAS)
     {}
 };
