@@ -1,0 +1,19 @@
+#!/bin/sh
+cd "${0%/*}" || exit                                # Run from this directory
+
+wclean applications/utilities/setLogNormal
+wclean applications/solvers/bubbleFoam
+wclean applications/solvers/msfrParcelFoam
+wclean applications/solvers/nuclearParcelFoam
+
+wclean src/nuclearCloudFvOptions
+wclean src/kinematicCloudFvOptions
+wclean src/nuclear
+wclean src/flotation
+wclean src/LogMoM
+wclean src/myTurbulence
+wclean src/myIntermediate
+
+rm -rf platforms
+
+#------------------------------------------------------------------------------
