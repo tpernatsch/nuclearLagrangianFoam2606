@@ -16,6 +16,7 @@ wmake src/nuclearCloudFvOptions
 wmake applications/solvers/nuclearParcelFoam
 wmake applications/solvers/msfrParcelFoam
 wmake applications/solvers/bubbleFoam
+wmake applications/solvers/thermoParcelFoam
 wmake applications/utilities/setLogNormal
 
 #------------------------------------------------------------------------------
