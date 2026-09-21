@@ -41,6 +41,7 @@ Description
 // Kinematic
 #include "makeNuclearParcelForces.H" // nuclear variant
 #include "makeNuclearEulerParcelForces.H" // two-phase-Euler variant
+#include "makeNuclearEulerParcelTurbulenceForces.H" // Brownian motion
 #include "makeParcelDispersionModels.H"
 #include "makeNuclearEulerParcelChiSwitchModels.H"
 #include "makeNuclearParcelInjectionModels.H" // nuclear variant
@@ -64,6 +65,7 @@ makeNuclearParcelCloudFunctionObjects(basicNuclearEulerCloud);
 // Kinematic sub-models
 makeNuclearParcelForces(basicNuclearEulerCloud);
 makeNuclearEulerParcelForces(basicNuclearEulerCloud);
+makeNuclearEulerParcelTurbulenceForces(basicNuclearEulerCloud);
 makeParcelDispersionModels(basicNuclearEulerCloud);
 makeNuclearEulerParcelChiSwitchModels(basicNuclearEulerCloud);
 makeNuclearParcelInjectionModels(basicNuclearEulerCloud);
