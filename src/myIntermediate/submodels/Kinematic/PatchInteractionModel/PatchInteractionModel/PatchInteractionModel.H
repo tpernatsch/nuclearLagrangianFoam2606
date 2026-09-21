@@ -104,6 +104,34 @@ protected:
             scalar Urmax_;
 
 
+        // Duplicate-row suppression for the info() .dat output
+        //
+        //  info() is called once per call to cloud.solve() - i.e. once per
+        //  PIMPLE outer corrector (and per outer ALE/alpha subcycle), not
+        //  once per actual solver time step - so writing a row on every
+        //  call would repeat the same (usually unchanged) cumulative
+        //  totals many times over for a single time value. writeTime()
+        //  cannot be used to dedupe this: it is constant across all of a
+        //  step's corrector calls, and is true on every call whenever
+        //  writeInterval == deltaT. Instead we track the last solver
+        //  timeIndex a row was actually written for for and only allow
+        //  one row per distinct timeIndex value.
+        //
+        //  info() is a base-class/derived-class two-part write, split
+        //  between this class and e.g. LocalInteraction: this class
+        //  decides newInfoTime_ once per call to its own info(), and the
+        //  derived class's info() reads that same flag (rather than
+        //  recomputing it) so both halves of the same row agree on
+        //  whether to write.
+
+            //- Solver timeIndex of the last row actually written to file()
+            mutable label lastInfoTimeIndex_;
+
+            //- True for the remainder of this info() call chain if the
+            //- current call represents a new timeIndex not yet written
+            mutable bool newInfoTime_;
+
+
     // Protected Member Functions
 
         //- Output file header information

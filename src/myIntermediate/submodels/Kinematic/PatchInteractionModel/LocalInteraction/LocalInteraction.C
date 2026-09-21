@@ -437,19 +437,30 @@ void Foam::LocalInteraction<CloudType>::info()
         }
     }
 
-    forAll(npe, patchi)
+    // Matches the newInfoTime_ decision PatchInteractionModel::info() (the
+    // call just above) already made for this same info() call: that call
+    // writes this row's time/escaped-system columns only once per
+    // distinct solver timeIndex, so the per-patch columns appended here
+    // must stay gated the same way - reading the flag it set rather than
+    // recomputing it keeps both halves of the row in lockstep even though
+    // writeTime() itself can't tell "new step" from "same step, another
+    // corrector" apart (see the comment there).
+    if (this->newInfoTime_)
     {
-        forAll(npe[patchi], injectori)
+        forAll(npe, patchi)
         {
-            this->file()
-                << tab << npe[patchi][injectori]
-                << tab << mpe[patchi][injectori]
-                << tab << nps[patchi][injectori]
-                << tab << mps[patchi][injectori];
+            forAll(npe[patchi], injectori)
+            {
+                this->file()
+                    << tab << npe[patchi][injectori]
+                    << tab << mpe[patchi][injectori]
+                    << tab << nps[patchi][injectori]
+                    << tab << mps[patchi][injectori];
+            }
         }
-    }
 
-    this->file() << endl;
+        this->file() << endl;
+    }
 
     if (this->writeTime())
     {

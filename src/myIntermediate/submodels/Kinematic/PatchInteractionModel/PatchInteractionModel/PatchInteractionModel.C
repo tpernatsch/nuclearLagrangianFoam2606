@@ -149,7 +149,9 @@ Foam::PatchInteractionModel<CloudType>::PatchInteractionModel
     UName_("unknown_U"),
     escapedParcels_(0),
     escapedMass_(0.0),
-    Urmax_(1e-4)
+    Urmax_(1e-4),
+    lastInfoTimeIndex_(-1),
+    newInfoTime_(false)
 {}
 
 
@@ -173,7 +175,9 @@ Foam::PatchInteractionModel<CloudType>::PatchInteractionModel
     UName_(this->coeffDict().template getOrDefault<word>("U", "U")),
     escapedParcels_(0),
     escapedMass_(0.0),
-    Urmax_(this->coeffDict().template getOrDefault<scalar>("UrMax", 0))
+    Urmax_(this->coeffDict().template getOrDefault<scalar>("UrMax", 0)),
+    lastInfoTimeIndex_(-1),
+    newInfoTime_(false)
 {}
 
 
@@ -188,7 +192,9 @@ Foam::PatchInteractionModel<CloudType>::PatchInteractionModel
     UName_(pim.UName_),
     escapedParcels_(pim.escapedParcels_),
     escapedMass_(pim.escapedMass_),
-    Urmax_(pim.Urmax_)
+    Urmax_(pim.Urmax_),
+    lastInfoTimeIndex_(pim.lastInfoTimeIndex_),
+    newInfoTime_(pim.newInfoTime_)
 {}
 
 
@@ -250,10 +256,27 @@ void Foam::PatchInteractionModel<CloudType>::info()
         this->file() << endl;
     }
 
-    this->writeCurrentTime(this->file());
-    this->file()
-        << tab << escapedParcelsTotal << tab << escapedMassTotal;
+    // Only emit one row per distinct solver timeIndex, not once per call
+    // to info() (which happens once per PIMPLE outer corrector/ALE
+    // subcycle - see nuclearEulerCloudSource - so unconditionally writing
+    // here would duplicate the same row many times over for a single time
+    // value). writeTime() is no good for this: it is constant across all
+    // of a step's corrector calls and is true on every single call
+    // whenever writeInterval == deltaT, so it cannot tell "new step" from
+    // "same step, another corrector" apart. newInfoTime_ is also read by
+    // the derived class's info() (e.g. LocalInteraction) so both halves
+    // of the same row agree on whether to write.
+    const label timeIndex = this->owner().db().time().timeIndex();
+    newInfoTime_ = (timeIndex != lastInfoTimeIndex_);
 
+    if (newInfoTime_)
+    {
+        lastInfoTimeIndex_ = timeIndex;
+
+        this->writeCurrentTime(this->file());
+        this->file()
+            << tab << escapedParcelsTotal << tab << escapedMassTotal;
+    }
 
     if (this->writeTime())
     {
