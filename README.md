@@ -39,9 +39,12 @@ contexts, built against **OpenFOAM v2606** (OpenCFD/ESI).
   (`source /usr/lib/openfoam/openfoam2606/etc/bashrc` or your install's
   equivalent) so `$WM_PROJECT_DIR`/`$WM_PROJECT_USER_DIR` and the `wmake`
   toolchain are on `PATH`.
-- This repository should live at `$WM_PROJECT_USER_DIR` (i.e.
-  `$HOME/OpenFOAM/$USER-<version>`), which is where OpenFOAM's own
-  `wmake`/`Make/options` conventions expect a user directory to be.
+- You can clone this repository anywhere - `Allwmake`/`Allwclean` set
+  `WM_PROJECT_USER_DIR` (and the `FOAM_USER_APPBIN`/`FOAM_USER_LIBBIN`
+  paths derived from it) to their own location before building, so it does
+  not need to sit at OpenFOAM's conventional
+  `$HOME/OpenFOAM/$USER-<version>` user directory or match the local
+  username.
 
 ## Building
 
@@ -53,9 +56,11 @@ From the repository root, with the OpenFOAM environment sourced:
 
 This builds every library and solver/utility above, in dependency order
 (`myIntermediate` before `myTurbulence` before the two `*CloudFvOptions`
-libraries, etc.). Libraries are installed to `$FOAM_USER_LIBBIN` and
-solvers/utilities to `$FOAM_USER_APPBIN` - both already on `PATH` once the
-OpenFOAM environment is sourced, so no further installation step is needed.
+libraries, etc.). Libraries are installed to this repository's own
+`platforms/<arch>/lib` and solvers/utilities to `platforms/<arch>/bin`
+(`Allwmake` points `FOAM_USER_LIBBIN`/`FOAM_USER_APPBIN` there for the
+duration of the build) - both already on `PATH` once the OpenFOAM
+environment is sourced, so no further installation step is needed.
 
 To remove everything this produces (compiled objects, `lnInclude` link
 farms and the `platforms/` output directory):
