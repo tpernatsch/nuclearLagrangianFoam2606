@@ -2,19 +2,11 @@
 cd "${0%/*}" || exit                                # Run from this directory
 set -e
 
-# Force WM_PROJECT_USER_DIR (and the FOAM_USER_*BIN paths derived from it)
-# to wherever this repository actually is, rather than relying on it
-# already matching OpenFOAM's own $HOME/$WM_PROJECT/$USER-$WM_PROJECT_VERSION
-# convention - a clone won't in general live at exactly that path, and the
-# local username may differ from whichever machine it was developed on.
-# Every Make/options in this repo resolves myIntermediate/myTurbulence
-# headers via $(WM_PROJECT_USER_DIR), so getting this wrong either breaks
-# the build outright (wmkdepend can't find e.g. BrownianMotionForce.H) or,
-# worse, silently pulls headers from some other WM_PROJECT_USER_DIR left
-# over on the machine.
-export WM_PROJECT_USER_DIR="$PWD"
-export FOAM_USER_APPBIN="$WM_PROJECT_USER_DIR/platforms/$WM_OPTIONS/bin"
-export FOAM_USER_LIBBIN="$WM_PROJECT_USER_DIR/platforms/$WM_OPTIONS/lib"
+# Points WM_PROJECT_USER_DIR/FOAM_USER_*BIN/PATH at this repository for the
+# build - see etc/sourceme.sh for why this alone isn't enough for your
+# interactive shell to find built solvers or build a single directory by
+# hand afterwards (source etc/sourceme.sh for that).
+. ./etc/sourceme.sh
 
 # Libraries, in dependency order (myTurbulence links against myIntermediate;
 # the two FvOptions libraries link against both)
@@ -32,5 +24,11 @@ wmake applications/solvers/msfrParcelFoam
 wmake applications/solvers/bubbleFoam
 wmake applications/solvers/thermoParcelFoam
 wmake applications/utilities/setLogNormal
+
+echo
+echo "Build complete. This only set up PATH for Allwmake's own subshell -"
+echo "run 'source etc/sourceme.sh' in your own shell too (once per new"
+echo "shell) so it can find the built solvers and build single directories"
+echo "by hand."
 
 #------------------------------------------------------------------------------

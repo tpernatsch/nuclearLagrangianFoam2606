@@ -39,16 +39,28 @@ contexts, built against **OpenFOAM v2606** (OpenCFD/ESI).
   (`source /usr/lib/openfoam/openfoam2606/etc/bashrc` or your install's
   equivalent) so `$WM_PROJECT_DIR`/`$WM_PROJECT_USER_DIR` and the `wmake`
   toolchain are on `PATH`.
-- You can clone this repository anywhere - `Allwmake`/`Allwclean` set
-  `WM_PROJECT_USER_DIR` (and the `FOAM_USER_APPBIN`/`FOAM_USER_LIBBIN`
-  paths derived from it) to their own location before building, so it does
-  not need to sit at OpenFOAM's conventional
-  `$HOME/OpenFOAM/$USER-<version>` user directory or match the local
-  username.
+- You can clone this repository anywhere - it does not need to sit at
+  OpenFOAM's conventional `$HOME/OpenFOAM/$USER-<version>` user directory
+  or match the local username.
 
 ## Building
 
-From the repository root, with the OpenFOAM environment sourced:
+From the repository root, with the OpenFOAM environment already sourced,
+**every new shell**:
+
+```sh
+source etc/sourceme.sh
+```
+
+This points `WM_PROJECT_USER_DIR`, `FOAM_USER_APPBIN`/`FOAM_USER_LIBBIN`
+and `PATH`/`LD_LIBRARY_PATH` at this repository, wherever it lives -
+without it, `wmake`/`wclean` can't find `myIntermediate`/`myTurbulence`
+(`-llagrangianMyIntermediate`/`-llagrangianMyTurbulence` "cannot be found"
+is this step missing), and built solvers won't be on `PATH`. It must be
+*sourced* (`source ...` / `. ...`), not executed - a script can only export
+variables into its own subshell, not back into the shell that ran it.
+
+Then build everything:
 
 ```sh
 ./Allwmake
@@ -56,14 +68,15 @@ From the repository root, with the OpenFOAM environment sourced:
 
 This builds every library and solver/utility above, in dependency order
 (`myIntermediate` before `myTurbulence` before the two `*CloudFvOptions`
-libraries, etc.). Libraries are installed to this repository's own
-`platforms/<arch>/lib` and solvers/utilities to `platforms/<arch>/bin`
-(`Allwmake` points `FOAM_USER_LIBBIN`/`FOAM_USER_APPBIN` there for the
-duration of the build) - both already on `PATH` once the OpenFOAM
-environment is sourced, so no further installation step is needed.
+libraries, etc.) into this repository's own `platforms/<arch>/lib` and
+`platforms/<arch>/bin`.
 
-To remove everything this produces (compiled objects, `lnInclude` link
-farms and the `platforms/` output directory):
+To build or clean a single directory by hand instead of the whole repo
+(e.g. after editing just one solver), `source etc/sourceme.sh` first, then
+`wmake`/`wclean` that directory as usual.
+
+To remove everything `Allwmake` produces (compiled objects, `lnInclude`
+link farms and the `platforms/` output directory):
 
 ```sh
 ./Allwclean
