@@ -32,7 +32,8 @@ License
 
 // Kinematic
 #include "makeNuclearParcelForces.H" // nuclear variant
-#include "makeNuclearParcelTurbulenceForces.H" // Brownian motion
+#include "makeNuclearParcelTurbulenceForces.H" // Brownian motion (stock)
+#include "makeNuclearParcelBoundedBrownianForce.H" // Brownian motion (bounded)
 #include "makeParcelDispersionModels.H"
 #include "makeNuclearParcelInjectionModels.H" // nuclear variant
 #include "makeParcelPatchInteractionModels.H"
@@ -55,6 +56,7 @@ makeNuclearParcelCloudFunctionObjects(basicNuclearCloud);
 // Kinematic sub-models
 makeNuclearParcelForces(basicNuclearCloud);
 makeNuclearParcelTurbulenceForces(basicNuclearCloud);
+makeNuclearParcelBoundedBrownianForce(basicNuclearCloud);
 makeParcelDispersionModels(basicNuclearCloud);
 makeNuclearParcelInjectionModels(basicNuclearCloud);
 makeParcelPatchInteractionModels(basicNuclearCloud);
