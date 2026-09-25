@@ -49,7 +49,7 @@ Description
 #include "makeParcelSurfaceFilmModels.H"
 
 // Thermodynamic-incompressible
-#include "makeParcelNuclearHeatTransferModels.H"
+#include "makeParcelHeatTransferModels.H"
 #include "makeParcelDecayHeatModels.H"
 
 // MPPIC sub-models
@@ -72,7 +72,7 @@ makeParcelStochasticCollisionModels(basicNuclearEulerCloud);
 makeParcelSurfaceFilmModels(basicNuclearEulerCloud);
 
 // Nuclear sub-models
-makeParcelNuclearHeatTransferModels(basicNuclearEulerCloud);
+makeParcelHeatTransferModels(basicNuclearEulerCloud);
 makeParcelDecayHeatModels(basicNuclearEulerCloud);
 
 

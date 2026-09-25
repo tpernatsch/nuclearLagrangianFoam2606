@@ -41,7 +41,7 @@ License
 #include "makeParcelSurfaceFilmModels.H"
 
 // Thermodynamic-incompressible
-#include "makeParcelNuclearHeatTransferModels.H"
+#include "makeParcelHeatTransferModels.H"
 #include "makeParcelDecayHeatModels.H"
 
 // MPPIC sub-models
@@ -64,7 +64,7 @@ makeParcelStochasticCollisionModels(basicNuclearCloud);
 makeParcelSurfaceFilmModels(basicNuclearCloud);
 
 // Nuclear sub-models
-makeParcelNuclearHeatTransferModels(basicNuclearCloud);
+makeParcelHeatTransferModels(basicNuclearCloud);
 makeParcelDecayHeatModels(basicNuclearCloud);
 
 
