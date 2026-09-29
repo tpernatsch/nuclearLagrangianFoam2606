@@ -49,6 +49,7 @@ License
 #include "KinematicWeberNumber.H"
 #include "ParticleDose.H"
 #include "StokesNumber.H"
+#include "ForceMagnitudes.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -73,7 +74,8 @@ License
     makeCloudFunctionObjectType(KinematicReynoldsNumber, CloudType);           \
     makeCloudFunctionObjectType(KinematicWeberNumber, CloudType);              \
     makeCloudFunctionObjectType(StokesNumber, CloudType);                      \
-    makeCloudFunctionObjectType(ParticleDose, CloudType);
+    makeCloudFunctionObjectType(ParticleDose, CloudType);                      \
+    makeCloudFunctionObjectType(ForceMagnitudes, CloudType);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
