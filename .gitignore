@@ -10,3 +10,6 @@ platforms/
 # editor/OS cruft
 *.swp
 .DS_Store
+
+# generated bubblyTube cases (recreate with run/bubblyTube/setupCase.py)
+run/bubblyTube/cases/
