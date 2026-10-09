@@ -106,7 +106,8 @@ VIRTUAL_MASS_CVM = 0.5           # [dW]
 # =============================================================================
 END_TIME = 40.0                  # [s]  [dW]: 40 s
 AVERAGE_START = 10.0             # [s]  start of fieldAverage and of the time-averaged statistics
-WRITE_INTERVAL = 1.0             # [s]
+WRITE_INTERVAL = 1.0             # [s]  one time folder per second
+PURGE_WRITE = 0                  # time folders kept during the run (0 = all); the averages only need the last one
 FIXED_TIME_STEP = None           # e.g. 1e-3 = [dW] fixed dt; None = adaptive (MAX_CO)
 MAX_CO = 0.5
 MAX_DELTA_T = 1.0e-3

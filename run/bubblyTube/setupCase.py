@@ -729,7 +729,7 @@ endTime         {cfg.END_TIME};
 {dt_block}
 writeControl    adjustable;
 writeInterval   {cfg.WRITE_INTERVAL};
-purgeWrite      0;
+purgeWrite      {getattr(cfg, 'PURGE_WRITE', 0)};      // number of time folders kept (0 = all)
 writeFormat     binary;
 writePrecision  8;
 writeCompression off;
@@ -1093,6 +1093,9 @@ def write_summary(c, cfg, d, warnings, cfg_path):
         f"LDA angles [deg]       : {cfg.LDA_ANGLES}",
         (f"Probe index            : i = (iz*{len(cfg.LDA_ANGLES)} + ia)*{len(cfg.LDA_RADII)} + ir" if cfg.LDA_ANGLES else "Probes                 : none"),
         "",
+        f"Output                 : time folder every {cfg.WRITE_INTERVAL:g} s, purgeWrite {getattr(cfg, 'PURGE_WRITE', 0)}",
+        f"Disk (estimate)        : {disk_text(cfg)}",
+        "",
         "Warnings:" if warnings else "Warnings: none",
     ] + [f"  - {w}" for w in warnings]
     c.write_raw("caseSummary.txt", "\n".join(lines) + "\n")
@@ -1154,22 +1157,34 @@ class Ask:
 
     @staticmethod
     def numbers(question, default, lo, hi, unit="", pattern=None, pattern_hint=None, soft=None):
-        """Comma-separated list of floats."""
+        """List of floats separated by commas, semicolons or spaces.
+        A token 'start:end:step' expands to start, start+step, ..., end."""
         print(f"\n{question}")
         dtxt = ", ".join(f"{x:g}" for x in default)
         while True:
             a = Ask._read(f"   values{(' [' + unit + ']') if unit else ''} [{dtxt}]: ") or dtxt
-            items = [x.strip() for x in a.replace(";", ",").split(",") if x.strip()]
-            bad = [x for x in items if pattern and not re.fullmatch(pattern, x)]
+            items = [x for x in re.split(r"[,;\s]+", a) if x]
+            parts = [p for x in items for p in x.split(":")]
+            bad = [p for p in parts if pattern and not re.fullmatch(pattern, p)]
             if bad:
                 print(f"   ! {', '.join(bad)}: format must be {pattern_hint}")
                 continue
             try:
-                vals = [float(x) for x in items]
+                vals = []
+                for x in items:
+                    p = [float(y) for y in x.split(":")]
+                    if len(p) == 1:
+                        vals.append(p[0])
+                    elif len(p) == 3 and p[2] > 0 and p[1] >= p[0]:
+                        n = int(round((p[1] - p[0]) / p[2]))
+                        vals += [p[0] + i * p[2] for i in range(n + 1)]
+                    else:
+                        raise ValueError
             except ValueError:
-                print("   ! not a list of numbers")
+                print("   ! not a list of numbers (ranges are written start:end:step, e.g. 0.02:0.28:0.02)")
                 continue
-            out = [v for v in vals if not lo <= v <= hi]
+            vals = [round(v, 6) for v in vals]
+            out = [v for v in vals if not lo - 1e-9 <= v <= hi + 1e-9]
             if out or not vals:
                 print(f"   ! every value must be between {lo:g} and {hi:g} {unit}")
                 continue
@@ -1309,11 +1324,13 @@ def questionnaire(cfg):
 
     # ------------------------------------------------------------------ 5
     section(5, N, "Measurements (LDA planes)")
+    zmax = round(cfg.LIQUID_HEIGHT - 0.02, 6)
     cfg.LDA_HEIGHTS = Ask.numbers(
-        "Heights of the LDA planes in m, comma separated, format 0.** (e.g. 0.15).\n"
+        "Heights of the LDA planes in m, format 0.** (e.g. 0.15), separated by spaces or commas\n"
+        "   (e.g. 0.05 0.15 0.25), or as a range start:end:step (e.g. 0.02:0.28:0.02 = every 2 cm).\n"
         "   Each plane gets LDA-point probes, mean profiles and the surface-averaged void fraction.\n"
-        f"   Allowed 0.02-{cfg.LIQUID_HEIGHT - 0.02:.2f} m (above the injector, below the free surface).",
-        cfg.LDA_HEIGHTS, 0.02, cfg.LIQUID_HEIGHT - 0.02, "m", pattern=r"0\.\d{1,3}", pattern_hint="0.** (e.g. 0.15)")
+        f"   Allowed 0.02-{zmax:.2f} m (above the injector, below the free surface).",
+        cfg.LDA_HEIGHTS, 0.02, zmax, "m", pattern=r"0\.\d{1,3}", pattern_hint="0.** (e.g. 0.15)")
     layout = Ask.choice("LDA points on each plane?", [
         ("8", "thesis radii (10 per path, 0.5-14.5 mm) on 8 radial paths (every 45 deg) = 80 points/plane"),
         ("4", "thesis radii on 4 radial paths (every 90 deg) = 40 points/plane (smaller files)"),
@@ -1329,6 +1346,14 @@ def questionnaire(cfg):
     ncpu = os.cpu_count() or 1
     cfg.N_PROCS = int(Ask.number(f"Number of processors (this machine has {ncpu}; thesis: 16).",
                                  min(cfg.N_PROCS, ncpu), 1, 1024, pattern=r"\d+", pattern_hint="an integer"))
+    cfg.WRITE_INTERVAL = Ask.number(
+        f"Write a time folder every ... s (the time averages are cumulative, so only the last folder is needed\n"
+        f"   for post-processing and restarts). Disk: ~{disk_estimate(cfg)['per_time_MB']:.0f} MB per time folder"
+        + (f", stored twice when run in parallel (processor* + reconstructed)." if cfg.N_PROCS > 1 else "."),
+        cfg.WRITE_INTERVAL, 0.01, cfg.END_TIME, "s")
+    cfg.PURGE_WRITE = int(Ask.number(
+        "How many time folders to keep? Older ones are deleted during the run (0 = keep all).",
+        getattr(cfg, "PURGE_WRITE", 0), 0, 100000, pattern=r"\d+", pattern_hint="an integer"))
 
     if Ask.yes("\nChange advanced settings (time step, numerics, aspect ratio, output)?", False):
         advanced(cfg)
@@ -1353,12 +1378,35 @@ def advanced(cfg):
         ("VakhrushevEfremov", "Vakhrushev-Efremov"), ("Tomiyama", "Tomiyama"),
     ], cfg.ASPECT_RATIO)
     cfg.VIRTUAL_MASS_CVM = Ask.number("Virtual mass coefficient (thesis 0.5).", cfg.VIRTUAL_MASS_CVM, 0.0, 2.0)
-    cfg.WRITE_INTERVAL = Ask.number("Write interval in s.", cfg.WRITE_INTERVAL, 0.01, cfg.END_TIME, "s")
     cfg.PROBE_WRITE_EVERY = int(Ask.number("Write LDA probes every N time steps.", cfg.PROBE_WRITE_EVERY, 1, 1000,
                                            pattern=r"\d+", pattern_hint="an integer"))
     cfg.WRITE_PHASE_FORCES = Ask.yes("Write the interfacial force fields (phaseForces)?", cfg.WRITE_PHASE_FORCES)
     cfg.INJECTOR_DIAMETER = 1e-6 * round(1e3 * Ask.number("Injector orifice diameter in mm (thesis 1.0).",
                                               1e3 * cfg.INJECTOR_DIAMETER, 0.1, 10.0, "mm"))
+
+
+def disk_estimate(cfg):
+    """Rough disk use of one case: time folders (binary fields) and LDA probe files (ascii)."""
+    m = dict(cfg.MESH_CUSTOM) if cfg.MESH_CUSTOM else dict(MESH_LEVELS[cfg.MESH_LEVEL])
+    cells = (m["Nc"] ** 2 + 4 * m["Nc"] * m["Nr"]) * max(1, round(cfg.TUBE_HEIGHT / m["dz"]))
+    turb = cfg.TURBULENCE != "laminar"
+    per_time = cells * (60 if turb else 50) * 8 / 1e6          # ~60 doubles per cell incl. means and fluxes
+    n_written = max(1, int(cfg.END_TIME / cfg.WRITE_INTERVAL))
+    purge = getattr(cfg, "PURGE_WRITE", 0)
+    kept = min(purge, n_written) if purge else n_written
+    fields = per_time * (kept + (1 if cfg.N_PROCS > 1 else 0))  # processor* folders + reconstructed latest
+    dt = cfg.FIXED_TIME_STEP or cfg.MAX_DELTA_T                  # ~1 ms in practice
+    lines = max(0.0, cfg.END_TIME - cfg.AVERAGE_START) / dt / max(1, cfg.PROBE_WRITE_EVERY)
+    npts = len(cfg.LDA_HEIGHTS) * len(cfg.LDA_ANGLES) * len(cfg.LDA_RADII)
+    probes = lines * npts * (45 + 15 + (15 if turb else 0)) / 1e6
+    return dict(per_time_MB=per_time, kept=kept, fields_MB=fields, probes_MB=probes, npts=npts)
+
+
+def disk_text(cfg):
+    e = disk_estimate(cfg)
+    gb = lambda mb: f"{mb/1e3:.1f} GB" if mb >= 1000 else f"{mb:.0f} MB"
+    return (f"~{gb(e['fields_MB'] + e['probes_MB'])}: time folders {gb(e['fields_MB'])} "
+            f"({e['kept']} x {e['per_time_MB']:.0f} MB), LDA probes {gb(e['probes_MB'])} ({e['npts']} points)")
 
 
 def print_overview(cfg):
@@ -1373,6 +1421,9 @@ def print_overview(cfg):
                    + (f" (Ctd {cfg.TD_CTD})" if cfg.TURB_DISPERSION else "")),
         ("LDA heights", f"{cfg.LDA_HEIGHTS} m, {len(cfg.LDA_ANGLES)} radial paths"),
         ("run", f"{cfg.END_TIME} s, averaging from {cfg.AVERAGE_START} s, {cfg.N_PROCS} processors"),
+        ("output", f"time folder every {cfg.WRITE_INTERVAL:g} s, keep "
+                   + (f"last {cfg.PURGE_WRITE}" if getattr(cfg, "PURGE_WRITE", 0) else "all")),
+        ("disk (estimate, per case)", disk_text(cfg)),
     ]
     for k, v in rows:
         print(f"   {k:<22}: {v}")
