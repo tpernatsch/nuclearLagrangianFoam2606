@@ -11,5 +11,11 @@ platforms/
 *.swp
 .DS_Store
 
+# Python bytecode cache
+__pycache__/
+
 # generated bubblyTube cases (recreate with run/bubblyTube/setupCase.py)
 run/bubblyTube/cases/
+
+# generated heatedPool cases (recreate with run/heatedPool/setupCase.py)
+run/heatedPool/cases/
