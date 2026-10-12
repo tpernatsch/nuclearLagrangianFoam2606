@@ -12,7 +12,6 @@ set -e
 # the two FvOptions libraries link against both)
 wmake src/myIntermediate
 wmake src/myTurbulence
-wmake src/LogMoM
 wmake src/flotation
 wmake src/nuclear
 wmake src/kinematicCloudFvOptions

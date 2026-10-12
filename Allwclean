@@ -16,7 +16,6 @@ wclean src/nuclearCloudFvOptions
 wclean src/kinematicCloudFvOptions
 wclean src/nuclear
 wclean src/flotation
-wclean src/LogMoM
 wclean src/myTurbulence
 wclean src/myIntermediate
 
