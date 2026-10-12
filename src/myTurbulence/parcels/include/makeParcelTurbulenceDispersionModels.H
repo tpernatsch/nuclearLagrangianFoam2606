@@ -32,6 +32,7 @@ License
 
 #include "GradientDispersionRAS.H"
 #include "StochasticDispersionRAS.H"
+#include "AnisotropicStochasticDispersionRAS.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -46,6 +47,7 @@ License
                                                                                \
     makeDispersionModelType(GradientDispersionRAS, CloudType);                 \
     makeDispersionModelType(StochasticDispersionRAS, CloudType);               \
+    makeDispersionModelType(AnisotropicStochasticDispersionRAS, CloudType);    \
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
