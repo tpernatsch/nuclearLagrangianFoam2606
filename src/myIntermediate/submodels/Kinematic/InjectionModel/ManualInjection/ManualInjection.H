@@ -97,6 +97,20 @@ class ManualInjection
         //- Flag to suppress errors if particle injection site is out-of-bounds
         Switch ignoreOutOfBounds_;
 
+        //- Release period (optional, default 0 = all parcels at SOI).
+        //  With duration > 0 the N positions are released one by one, in
+        //  file order, position k at SOI + (k + 0.5)*duration/N
+        scalar duration_;
+
+        //- Index of the first position released in the current time step
+        label offset_;
+
+
+    // Private Member Functions
+
+        //- Number of positions released before time t (relative to SOI)
+        label nReleased(const scalar t) const;
+
 
 public:
 

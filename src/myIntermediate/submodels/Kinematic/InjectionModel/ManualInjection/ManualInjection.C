@@ -71,8 +71,12 @@ Foam::ManualInjection<CloudType>::ManualInjection
     ignoreOutOfBounds_
     (
         this->coeffDict().getOrDefault("ignoreOutOfBounds", false)
-    )
+    ),
+    duration_(this->coeffDict().getOrDefault("duration", scalar(0))),
+    offset_(0)
 {
+    duration_ = owner.db().time().userTimeToTime(duration_);
+
     updateMesh();
 
     // Construct parcel diameters
@@ -101,7 +105,9 @@ Foam::ManualInjection<CloudType>::ManualInjection
     injectorTetPts_(im.injectorTetPts_),
     U0_(im.U0_),
     sizeDistribution_(im.sizeDistribution_.clone()),
-    ignoreOutOfBounds_(im.ignoreOutOfBounds_)
+    ignoreOutOfBounds_(im.ignoreOutOfBounds_),
+    duration_(im.duration_),
+    offset_(im.offset_)
 {}
 
 
@@ -113,6 +119,16 @@ Foam::ManualInjection<CloudType>::~ManualInjection()
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+template<class CloudType>
+Foam::label Foam::ManualInjection<CloudType>::nReleased(const scalar t) const
+{
+    // Position k is released at (k + 0.5)*duration/N after SOI
+    const label n = positions_.size();
+    const scalar k = t*n/duration_ - 0.5;
+    return min(max(label(ceil(k)), label(0)), n);
+}
+
 
 template<class CloudType>
 void Foam::ManualInjection<CloudType>::updateMesh()
@@ -157,9 +173,9 @@ void Foam::ManualInjection<CloudType>::updateMesh()
 template<class CloudType>
 Foam::scalar Foam::ManualInjection<CloudType>::timeEnd() const
 {
-    // Injection is instantaneous - but allow for a finite interval to
-    // avoid numerical issues when interval is zero
-    return this->SOI_ + SMALL;
+    // Instantaneous injection: allow for a finite interval to avoid
+    // numerical issues when the interval is zero
+    return this->SOI_ + max(duration_, SMALL);
 }
 
 
@@ -170,6 +186,17 @@ Foam::label Foam::ManualInjection<CloudType>::parcelsToInject
     const scalar time1
 )
 {
+    if (duration_ > 0)
+    {
+        // Positions released in [time0, time1): the index of the first one
+        // is kept for setPositionAndCell/setProperties (time based, so it is
+        // the same on every processor and after a restart)
+        offset_ = nReleased(time0);
+        return nReleased(time1) - offset_;
+    }
+
+    offset_ = 0;
+
     if ((0.0 >= time0) && (0.0 < time1))
     {
         return positions_.size();
@@ -186,6 +213,16 @@ Foam::scalar Foam::ManualInjection<CloudType>::volumeToInject
     const scalar time1
 )
 {
+    if (duration_ > 0)
+    {
+        scalar volume = 0;
+        for (label i = nReleased(time0); i < nReleased(time1); ++i)
+        {
+            volume += pow3(diameters_[i])*pi/6.0;
+        }
+        return volume;
+    }
+
     // All parcels introduced at SOI
     if ((0.0 >= time0) && (0.0 < time1))
     {
@@ -208,10 +245,11 @@ void Foam::ManualInjection<CloudType>::setPositionAndCell
     label& tetPti
 )
 {
-    position = positions_[parcelI];
-    cellOwner = injectorCells_[parcelI];
-    tetFacei = injectorTetFaces_[parcelI];
-    tetPti = injectorTetPts_[parcelI];
+    const label i = offset_ + parcelI;
+    position = positions_[i];
+    cellOwner = injectorCells_[i];
+    tetFacei = injectorTetFaces_[i];
+    tetPti = injectorTetPts_[i];
 }
 
 
@@ -228,7 +266,7 @@ void Foam::ManualInjection<CloudType>::setProperties
     parcel.U() = U0_;
 
     // set particle diameter
-    parcel.d() = diameters_[parcelI];
+    parcel.d() = diameters_[offset_ + parcelI];
 }
 
 

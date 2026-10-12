@@ -48,6 +48,7 @@ License
 //#include "HeatTransferCoeff.H"
 //#include "ThermoReynoldsNumber.H"
 #include "ParticleDose.H"
+#include "ForceMagnitudes.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -69,7 +70,8 @@ License
     makeCloudFunctionObjectType(RemoveParcels, CloudType);                     \
     makeCloudFunctionObjectType(FunctionalRemoveParcels, CloudType);           \
     makeCloudFunctionObjectType(VoidFraction, CloudType);                      \
-    makeCloudFunctionObjectType(ParticleDose, CloudType);
+    makeCloudFunctionObjectType(ParticleDose, CloudType);                      \
+    makeCloudFunctionObjectType(ForceMagnitudes, CloudType);
 //    makeCloudFunctionObjectType(NusseltNumber, CloudType);                     \
     makeCloudFunctionObjectType(HeatTransferCoeff, CloudType);                 \
     makeCloudFunctionObjectType(ThermoReynoldsNumber, CloudType);              \
