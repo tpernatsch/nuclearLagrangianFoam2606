@@ -92,7 +92,7 @@ class nuclearCloudSourceSingle
         //- Persistent carrier dynamic viscosity field
         volScalarField muc_;
 
-        //- The cloud itself; created lazily on the first correct() call
+        //- The cloud itself; built in the constructor (start time: reads a restart)
         autoPtr<basicNuclearCloud> cloud_;
 
         //- Time index of the last evolve: the buoyantBoussinesq solvers

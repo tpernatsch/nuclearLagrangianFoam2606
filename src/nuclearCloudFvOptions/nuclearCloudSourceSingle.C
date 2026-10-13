@@ -76,6 +76,25 @@ Foam::fv::nuclearCloudSourceSingle::nuclearCloudSourceSingle
 {
     fieldNames_.setSize(1, "U");
     resetApplied();
+
+    // Build the cloud now, at the start time: it then reads the parcels and
+    // its saved state (uniform/lagrangian/<cloud>, e.g. what the injection
+    // models have already released) of a restart. Built later, in correct(),
+    // the time has already advanced: the cloud would read nothing, start
+    // empty, and the injection would release everything again. U and T exist
+    // here: the solvers create the fvOptions after their fields.
+    cloud_.reset
+    (
+        new basicNuclearCloud
+        (
+            cloudName_,
+            rhoc_,
+            mesh_.lookupObject<volVectorField>("U"),
+            muc_,
+            mesh_.lookupObject<volScalarField>("T"),
+            meshObjects::gravity::New(mesh_.time())
+        )
+    );
 }
 
 
@@ -83,35 +102,15 @@ Foam::fv::nuclearCloudSourceSingle::nuclearCloudSourceSingle
 
 void Foam::fv::nuclearCloudSourceSingle::correct(volVectorField& U)
 {
-    // Same "settle first" guard as nuclearCloudSource/kinematicCloudSource
-    if (mesh_.time().timeIndex() <= 1)
-    {
-        return;
-    }
-
     // Evolve once per time step, on the first call (after the momentum
-    // predictor); later calls from the pressure correctors are ignored
+    // predictor); later calls from the pressure correctors are ignored.
+    // No "settle first" skip of the first step: the cloud exists from the
+    // start (and a restart must not lose a step of particle motion).
     if (mesh_.time().timeIndex() == lastTimeIndex_)
     {
         return;
     }
     lastTimeIndex_ = mesh_.time().timeIndex();
-
-    if (!cloud_)
-    {
-        cloud_.reset
-        (
-            new basicNuclearCloud
-            (
-                cloudName_,
-                rhoc_,
-                U,
-                muc_,
-                mesh_.lookupObject<volScalarField>("T"),
-                meshObjects::gravity::New(mesh_.time())
-            )
-        );
-    }
 
     cloud_->storeGlobalPositions();
     cloud_->evolve();

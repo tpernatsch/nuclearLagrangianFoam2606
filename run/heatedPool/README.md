@@ -404,6 +404,23 @@ buoyantBoussinesqPimpleFoam also calls `fvOptions.correct(U)` after every pressu
 before the fix the cloud advanced 1 + nCorrectors steps per time step. ForceMagnitudes is now registered
 for nuclear parcels.
 
+**Restarts (fixed 2026-10-13).** `nuclearCloudSourceSingle` used to build the cloud at its first `correct()` call,
+when the time had already advanced past the restart time. The cloud then read nothing from the restart folder,
+started empty, and the injection models (no saved state) released every parcel again at once. The cluster run
+continued from 60 to 180 s showed this: new parcels with reused IDs, all with the same age, and the parcels
+stuck before the restart gone. The cloud is now built in the fvOption constructor, at the start time, so it
+reads the parcels (position, `active`, age, ...) and `uniform/lagrangian/<cloud>` (the injection state).
+
+Test (A wedge, 1 nm and 1 µm, 300 each; one run 0 → 6 s against 0 → 3 s plus a restart 3 → 6 s): at 6 s, the
+same 600 parcels with the same IDs, sizes and ages, the same stuck parcels (none moved), and no re-injection.
+Without Brownian motion the paths agree to 0.016 µm, the precision of the written files. With it, the random
+kicks after the restart differ (the random-number state is not saved), so the paths differ while the
+statistics are the same.
+
+Rebuild `nuclearCloudFvOptions` (and `myIntermediate`) on the cluster before the next particle run. The
+post-processing notebook detects a cloud that was rebuilt at a restart (the same parcel ID with a different
+size) and then analyses only the time after it.
+
 **Brownian force and U integration for dt ≫ τp.** In the salt, τp = ρp d² Cc/(18 µ) is 1.4e-13 s at 1 nm
 and 1.4e-5 s at 10 µm. Every parcel sub-step (~1e-3 s) therefore has dt/τp from ~10² up to ~10¹⁰. The parcel
 moves with the velocity it holds over the sub-step (`KinematicParcel::move`: `s = trackTime*U_`, then
