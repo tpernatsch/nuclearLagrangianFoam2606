@@ -71,7 +71,8 @@ Foam::fv::nuclearCloudSourceSingle::nuclearCloudSourceSingle
         mesh_,
         mu0_
     ),
-    cloud_(nullptr)
+    cloud_(nullptr),
+    lastTimeIndex_(-1)
 {
     fieldNames_.setSize(1, "U");
     resetApplied();
@@ -87,6 +88,14 @@ void Foam::fv::nuclearCloudSourceSingle::correct(volVectorField& U)
     {
         return;
     }
+
+    // Evolve once per time step, on the first call (after the momentum
+    // predictor); later calls from the pressure correctors are ignored
+    if (mesh_.time().timeIndex() == lastTimeIndex_)
+    {
+        return;
+    }
+    lastTimeIndex_ = mesh_.time().timeIndex();
 
     if (!cloud_)
     {

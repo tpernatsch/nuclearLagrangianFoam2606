@@ -95,6 +95,12 @@ class nuclearCloudSourceSingle
         //- The cloud itself; created lazily on the first correct() call
         autoPtr<basicNuclearCloud> cloud_;
 
+        //- Time index of the last evolve: the buoyantBoussinesq solvers
+        //  call fvOptions.correct(U) after the momentum predictor and after
+        //  every pressure corrector, so without this guard the cloud would
+        //  advance (1 + nCorrectors) time steps per time step
+        label lastTimeIndex_;
+
 
 public:
 
