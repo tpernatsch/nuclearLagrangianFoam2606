@@ -188,6 +188,13 @@ MAX_DELTA_T = 0.05             # [s]
 HEAT_BALANCE_EVERY = 10        # write the heat balance every N time steps / iterations
 N_PROCS = 4
 
+# ----------------------------------------------------------------------------- SLURM cluster
+# enabled: write Allrun.slurm (submit from the case directory: sbatch Allrun.slurm) instead of Allrun.
+#   ntasks : #SBATCH -n (replaces N_PROCS; numberOfSubdomains is set from SLURM_NTASKS at run time).
+#            Wedge cases stay serial (1 task).
+#   account: #SBATCH -A ("" -> no line);  extra: more #SBATCH options, e.g. ["-t 48:00:00", "-p cpu"]
+CLUSTER = dict(enabled=False, ntasks=64, account="eu", extra=[])
+
 # ----------------------------------------------------------------------------- Lagrangian fission-product particles
 # One-way coupled NuclearCloud (src/myIntermediate) riding on the transient stage through the fvOption
 # nuclearCloudSourceSingle (src/nuclearCloudFvOptions): no momentum/heat back to the salt, no dispersion,

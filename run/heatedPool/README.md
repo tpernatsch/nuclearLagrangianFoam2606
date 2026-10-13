@@ -320,6 +320,21 @@ and the medium is grey.
 | `steady` | SIMPLE only |
 | `transient` | PIMPLE from rest, e.g. to reproduce a heat-up. `caseSummary.txt` gives the thermal time constant: run ~3–5 of them |
 
+**SLURM cluster (`CLUSTER`, questionnaire section 6).** With `enabled=True` the case gets `Allrun.slurm` instead
+of `Allrun`; submit it from the case directory with `sbatch Allrun.slurm`. The script:
+
+- has a header of `#SBATCH -n <ntasks>`, `#SBATCH -A <account>` (left out when empty) and any `extra` options
+  (e.g. `["-t 48:00:00", "-p cpu"]`);
+- runs `cd "$SLURM_SUBMIT_DIR"` and adds `$FOAM_USER_APPBIN` to `PATH`;
+- sets `numberOfSubdomains` from `$SLURM_NTASKS`;
+- runs the solvers (and `makeFaMesh` for the thin shell) with `srun <app> -parallel > log.<app>.<stage>`, and
+  the serial utilities with `runApplication`;
+- keeps the same stage logic as Allrun (steady → move to 0 → transient, particle fvOptions swap);
+- ends with `reconstructPar -newTimes` and `touch foam.foam`.
+
+Wedge cases stay serial (`-n 1`, no decomposition). `ntasks` replaces `N_PROCS`. The OpenFOAM environment comes
+from the submitting shell (sbatch exports it by default), as in the HXThermalInlet scripts.
+
 **Starting from a finished case (`INITIAL_FIELDS`).** Set `INITIAL_FIELDS = "cases/<finished case>"` (or
 answer the questionnaire question in section 6) to start, e.g., a `transient` particle run from a converged
 steady case without repeating SIMPLE. The generator then:
