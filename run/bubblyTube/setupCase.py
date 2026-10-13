@@ -894,12 +894,13 @@ average
 }}
 
 // up/down split of the MEAN liquid axial velocity ([dW] downcomer flow-rate analogue)
-UzDown  {{ type exprField; libs (fieldFunctionObjects); field UzDown; timeStart $tAvg;
-          expression "(U.waterMean.z() < 0) ? U.waterMean.z() : 0"; dimensions [0 1 -1 0 0 0 0]; }}
-UzUp    {{ type exprField; libs (fieldFunctionObjects); field UzUp; timeStart $tAvg;
-          expression "(U.waterMean.z() > 0) ? U.waterMean.z() : 0"; dimensions [0 1 -1 0 0 0 0]; }}
-downMask {{ type exprField; libs (fieldFunctionObjects); field downMask; timeStart $tAvg;
-          expression "(U.waterMean.z() < 0) ? 1 : 0"; dimensions [0 0 0 0 0 0 0]; }}
+// evaluated and written only at write times (the default, every time step, creates a time folder per step)
+UzDown   {{ type exprField; libs (fieldFunctionObjects); timeStart $tAvg; executeControl writeTime; writeControl writeTime;
+           field UzDown;   expression "(U.waterMean.z() < 0) ? U.waterMean.z() : 0"; dimensions [0 1 -1 0 0 0 0]; }}
+UzUp     {{ type exprField; libs (fieldFunctionObjects); timeStart $tAvg; executeControl writeTime; writeControl writeTime;
+           field UzUp;     expression "(U.waterMean.z() > 0) ? U.waterMean.z() : 0"; dimensions [0 1 -1 0 0 0 0]; }}
+downMask {{ type exprField; libs (fieldFunctionObjects); timeStart $tAvg; executeControl writeTime; writeControl writeTime;
+           field downMask; expression "(U.waterMean.z() < 0) ? 1 : 0"; dimensions [0 0 0 0 0 0 0]; }}
 """)
 
     for i, z in enumerate(cfg.LDA_HEIGHTS, 1):
@@ -1056,7 +1057,17 @@ foamDictionary -entry writeInterval -set {cfg.WRITE_INTERVAL} system/controlDict
 """
     else:
         body += f"\n{solver.format(s='run')}\n"
-    if par:
+    if par and getattr(cfg, "CLEAN_PROCESSORS", False):
+        body += """
+# reconstruct the kept time folders, then remove the processor* copies (only if reconstruction succeeded)
+if reconstructPar -newTimes > log.reconstructPar 2>&1
+then
+    rm -rf processor[0-9]*
+else
+    echo "reconstructPar failed: processor* folders kept (see log.reconstructPar)"
+fi
+"""
+    elif par:
         body += "\nrunApplication reconstructPar -latestTime\n"
     body += "\n#------------------------------------------------------------------------------\n"
     c.write_raw("Allrun", body, executable=True)
@@ -1347,13 +1358,17 @@ def questionnaire(cfg):
     cfg.N_PROCS = int(Ask.number(f"Number of processors (this machine has {ncpu}; thesis: 16).",
                                  min(cfg.N_PROCS, ncpu), 1, 1024, pattern=r"\d+", pattern_hint="an integer"))
     cfg.WRITE_INTERVAL = Ask.number(
-        f"Write a time folder every ... s (the time averages are cumulative, so only the last folder is needed\n"
-        f"   for post-processing and restarts). Disk: ~{disk_estimate(cfg)['per_time_MB']:.0f} MB per time folder"
-        + (f", stored twice when run in parallel (processor* + reconstructed)." if cfg.N_PROCS > 1 else "."),
-        cfg.WRITE_INTERVAL, 0.01, cfg.END_TIME, "s")
+        f"Write a time folder every ... s (minimum 1 s). Disk: ~{disk_estimate(cfg)['per_time_MB']:.0f} MB per time folder.",
+        max(cfg.WRITE_INTERVAL, 1.0), 1.0, cfg.END_TIME, "s")
     cfg.PURGE_WRITE = int(Ask.number(
-        "How many time folders to keep? Older ones are deleted during the run (0 = keep all).",
-        getattr(cfg, "PURGE_WRITE", 0), 0, 100000, pattern=r"\d+", pattern_hint="an integer"))
+        "How many time folders to keep (also inside every processor* folder)? Older ones are deleted during the run.\n"
+        "   The time averages are cumulative, so the last folder is enough for post-processing and restarts;\n"
+        "   2 keeps a spare in case the run stops while writing. 0 = keep all.",
+        getattr(cfg, "PURGE_WRITE", 2), 0, 100000, pattern=r"\d+", pattern_hint="an integer"))
+    if cfg.N_PROCS > 1:
+        cfg.CLEAN_PROCESSORS = Ask.yes(
+            "\nDelete the processor* folders after a successful reconstructPar (the reconstructed time folders are kept;\n"
+            "   to continue the run later in parallel, run decomposePar again)?", getattr(cfg, "CLEAN_PROCESSORS", True))
 
     if Ask.yes("\nChange advanced settings (time step, numerics, aspect ratio, output)?", False):
         advanced(cfg)
@@ -1394,7 +1409,8 @@ def disk_estimate(cfg):
     n_written = max(1, int(cfg.END_TIME / cfg.WRITE_INTERVAL))
     purge = getattr(cfg, "PURGE_WRITE", 0)
     kept = min(purge, n_written) if purge else n_written
-    fields = per_time * (kept + (1 if cfg.N_PROCS > 1 else 0))  # processor* folders + reconstructed latest
+    clean = cfg.N_PROCS > 1 and getattr(cfg, "CLEAN_PROCESSORS", False)
+    fields = per_time * (kept + (1 if cfg.N_PROCS > 1 and not clean else 0))  # processor* + reconstructed latest
     dt = cfg.FIXED_TIME_STEP or cfg.MAX_DELTA_T                  # ~1 ms in practice
     lines = max(0.0, cfg.END_TIME - cfg.AVERAGE_START) / dt / max(1, cfg.PROBE_WRITE_EVERY)
     npts = len(cfg.LDA_HEIGHTS) * len(cfg.LDA_ANGLES) * len(cfg.LDA_RADII)
@@ -1422,7 +1438,9 @@ def print_overview(cfg):
         ("LDA heights", f"{cfg.LDA_HEIGHTS} m, {len(cfg.LDA_ANGLES)} radial paths"),
         ("run", f"{cfg.END_TIME} s, averaging from {cfg.AVERAGE_START} s, {cfg.N_PROCS} processors"),
         ("output", f"time folder every {cfg.WRITE_INTERVAL:g} s, keep "
-                   + (f"last {cfg.PURGE_WRITE}" if getattr(cfg, "PURGE_WRITE", 0) else "all")),
+                   + (f"last {cfg.PURGE_WRITE}" if getattr(cfg, "PURGE_WRITE", 0) else "all")
+                   + (", processor* deleted after reconstructPar"
+                      if cfg.N_PROCS > 1 and getattr(cfg, "CLEAN_PROCESSORS", False) else "")),
         ("disk (estimate, per case)", disk_text(cfg)),
     ]
     for k, v in rows:

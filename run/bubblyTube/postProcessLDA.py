@@ -56,9 +56,13 @@ def read_dat(fo_dir, fname):
     return t, np.array([rows[k] for k in t])
 
 
-def read_probes(fo_dir, field):
-    """Probe file -> (t, data[nt, nprobe, ncomp])."""
-    rows = {}
+_PARENS = str.maketrans("()", "  ")
+
+
+def probe_stats(fo_dir, field, tavg, comp):
+    """Streaming mean/std of one component over t >= tavg (probe files can be GBs).
+    Returns (mean[nprobe], std[nprobe], nsamples, t_last) or None."""
+    n, s1, s2, t_last = 0, None, None, None
     for d in time_dirs(fo_dir):
         p = os.path.join(d, field)
         if not os.path.exists(p):
@@ -68,24 +72,67 @@ def read_probes(fo_dir, field):
                 if line.startswith("#") or not line.strip():
                     continue
                 t, rest = line.split(None, 1)
-                if "(" in rest:
-                    vals = [[float(x) for x in g.split()] for g in re.findall(r"\(([^)]*)\)", rest)]
-                else:
-                    vals = [[float(x)] for x in rest.split()]
-                rows[float(t)] = vals
-    if not rows:
-        return None, None
-    t = np.array(sorted(rows))
-    return t, np.array([rows[k] for k in t])
+                t = float(t)
+                if t < tavg or (t_last is not None and t <= t_last):
+                    continue
+                v = np.fromstring(rest.translate(_PARENS), sep=" ")
+                ncomp = 3 if "(" in rest else 1
+                if s1 is not None and v.size != s1.size * ncomp:
+                    continue                        # truncated last line
+                v = v.reshape(-1, ncomp)[:, comp]
+                if s1 is None:
+                    s1, s2 = np.zeros_like(v), np.zeros_like(v)
+                s1 += v
+                s2 += v * v
+                n += 1
+                t_last = t
+    if not n:
+        return None
+    m = s1 / n
+    sd = np.sqrt(np.maximum(s2 / n - m * m, 0) * n / max(n - 1, 1))
+    return m, sd, n, t_last
 
 
-def read_config(case):
+def probe_layout(fo_dir):
+    """Probe locations from the file header -> (heights, angles_deg, radii, tStart)."""
+    for d in time_dirs(fo_dir):
+        for p in sorted(glob.glob(os.path.join(d, "*"))):
+            pts = []
+            with open(p) as f:
+                for line in f:
+                    m = re.match(r"#\s*Probe\s+\d+\s+\(([^)]*)\)", line)
+                    if m:
+                        pts.append([float(x) for x in m.group(1).split()])
+                    elif not line.startswith("#"):
+                        t0 = float(line.split()[0])
+                        break
+            if pts:
+                pts = np.array(pts)
+                r = np.round(np.hypot(pts[:, 0], pts[:, 1]), 6)
+                a = np.round(np.degrees(np.arctan2(pts[:, 1], pts[:, 0])) % 360, 3)
+                uniq = lambda x: list(dict.fromkeys(x.tolist()))   # keep file order
+                return uniq(np.round(pts[:, 2], 6)), uniq(a), uniq(r), t0
+    return None
+
+
+def read_config(case, pp):
+    """caseSettings.py if present, otherwise rebuild what is needed from the probe headers."""
     import importlib.util
+    import types
     p = os.path.join(case, "caseSettings.py")
-    spec = importlib.util.spec_from_file_location("cfg", p)
-    cfg = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(cfg)
-    return cfg
+    if os.path.exists(p):
+        spec = importlib.util.spec_from_file_location("cfg", p)
+        cfg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cfg)
+        return cfg
+    lay = probe_layout(os.path.join(pp, "ldaProbes"))
+    if lay is None:
+        raise SystemExit(f"no caseSettings.py and no ldaProbes in {case}")
+    z, a, r, t0 = lay
+    print(f"[info] no caseSettings.py: layout from probe headers ({len(z)} heights x {len(a)} angles x "
+          f"{len(r)} radii), averaging from t = {t0:g} s, D = 0.030 m, liquid level 0.30 m")
+    return types.SimpleNamespace(LDA_HEIGHTS=z, LDA_ANGLES=a, LDA_RADII=r, AVERAGE_START=t0,
+                                 TUBE_DIAMETER=0.030, LIQUID_HEIGHT=0.30)
 
 
 # ----------------------------------------------------------------------------- PCHIP (Fritsch-Carlson)
@@ -146,11 +193,11 @@ def main():
     if not args:
         raise SystemExit(__doc__)
     case = os.path.abspath(args[0])
-    cfg = read_config(case)
+    pp = os.path.join(case, "postProcessing")
+    cfg = read_config(case, pp)
     tavg = cfg.AVERAGE_START
     if "--tavg" in sys.argv:
         tavg = float(sys.argv[sys.argv.index("--tavg") + 1])
-    pp = os.path.join(case, "postProcessing")
     out = os.path.join(pp, "summary")
     os.makedirs(out, exist_ok=True)
     R = cfg.TUBE_DIAMETER / 2
@@ -159,19 +206,19 @@ def main():
     nz, na, nr = len(Z), len(AN), len(RA)
 
     # ---- probes
-    tU, U = read_probes(os.path.join(pp, "ldaProbes"), "U.water")
-    ta, al = read_probes(os.path.join(pp, "ldaProbes"), "alpha.air")
     Wmean = np.full((nz, na, nr), np.nan)
     Wstd = np.full((nz, na, nr), np.nan)
     Amean = np.full((nz, na, nr), np.nan)
-    nsamp = 0
-    if tU is not None and na > 0:
-        sel = tU >= tavg
-        nsamp = int(sel.sum())
-        uz = U[sel, :, 2].reshape(nsamp, nz, na, nr)
-        Wmean, Wstd = uz.mean(0), uz.std(0, ddof=1) if nsamp > 1 else np.zeros_like(uz[0])
-        if ta is not None:
-            Amean = al[ta >= tavg, :, 0].reshape(-1, nz, na, nr).mean(0)
+    nsamp, t_probe = 0, None
+    has_probes = False
+    if na > 0:
+        su = probe_stats(os.path.join(pp, "ldaProbes"), "U.water", tavg, 2)
+        if su is not None and su[0].size == nz * na * nr:
+            Wmean, Wstd = su[0].reshape(nz, na, nr), su[1].reshape(nz, na, nr)
+            nsamp, t_probe, has_probes = su[2], su[3], True
+        sa = probe_stats(os.path.join(pp, "ldaProbes"), "alpha.air", tavg, 0)
+        if sa is not None and sa[0].size == nz * na * nr:
+            Amean = sa[0].reshape(nz, na, nr)
     with open(os.path.join(out, "lda_points.csv"), "w") as f:
         f.write("z,angle_deg,r,x,y,Uz_mean,sigma_z,TI_z,alpha_mean,n_samples\n")
         for iz, z in enumerate(Z):
@@ -203,7 +250,7 @@ def main():
         else:
             Qd = Qu = Ad = float("nan")
         Au = A - Ad
-        if tU is not None and na > 0:
+        if has_probes:
             Qd_l, Qu_l, Ad_l = lda_flow(RA, AN, Wmean[iz - 1], R)
         else:
             Qd_l = Qu_l = Ad_l = float("nan")
@@ -218,7 +265,8 @@ def main():
             f.write(",".join(f"{x:.6g}" for x in r) + "\n")
 
     # ---- monitors
-    lines = [f"case: {case}", f"averaging window: t >= {tavg} s, probe samples: {nsamp}"]
+    lines = [f"case: {case}", f"averaging window: t >= {tavg} s, probe samples: {nsamp}"
+             + (f" (last probe time {t_probe:g} s)" if t_probe is not None else "")]
     t, v = read_dat(os.path.join(pp, "holdup"), "volFieldValue.dat")
     if t is not None:
         s = t >= tavg if (t >= tavg).any() else t >= t[-1]
