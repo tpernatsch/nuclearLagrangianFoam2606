@@ -703,6 +703,9 @@ def checks(cfg, d):
                              "the cloud is built at the 2nd time step")
         if pp["SOI"] + (pp.get("release_duration", 0) or 0) > cfg.TRANSIENT_END_TIME:
             w.append("PARTICLES: SOI + release_duration is after TRANSIENT_END_TIME: not all parcels get released")
+        if pp.get("injection") == "cellZone" and (pp.get("release_duration", 0) or 0) > 0:
+            w.append("PARTICLES injection 'cellZone': cellZoneInjection releases all parcels at SOI "
+                     "(release_duration is ignored); the number per size is ~n_per_injection (rounded per cell)")
         if pp.get("brownian", "BoundedBrownianMotion") == "BoundedBrownianMotion":
             w.append("BoundedBrownianMotion: for dt >> tauP the parcel diffusivity is dt/(2 tauP) x Stokes-Einstein "
                      "(and sub-100 nm parcels get ~thermal speed -> very slow); stock 'BrownianMotion' is exact there "
@@ -1785,19 +1788,30 @@ def particles_on(cfg):
     return bool(getattr(cfg, "PARTICLES", {}).get("enabled")) and "transient" in stages(cfg)
 
 
+WALL_GAP = 250e-6    # [m] distance kept from the walls when injecting over the whole domain
+
+
+def injection_mode(cfg):
+    return (getattr(cfg, "PARTICLES", {}) or {}).get("injection", "central")
+
+
 def injection_positions(cfg, d):
     """One list of unique points per diameter, random (seeded) and uniform in the 3D volume of the
     central region (margin x gap/radius and x height left free next to every surface).
     Wedge: angle within 90 % of the wedge (the parcels do move across it; the faces reflect them)."""
     pp = cfg.PARTICLES
     m, H = pp["margin"], d["H"]
+    if pp.get("injection", "central") == "domain":
+        m = 0.0
+    gw = WALL_GAP if m == 0 else 0.0           # whole domain: stay a little off the walls (polygonal mesh walls)
     if cfg.GEOMETRY == "A":
         ri, ro = cfg.A_INNER_DIAMETER / 2, cfg.A_OUTER_DIAMETER / 2
-        r0, r1 = ri + m * (ro - ri), ro - m * (ro - ri)
+        r0, r1 = ri + m * (ro - ri) + gw, ro - m * (ro - ri) - gw
     else:
         R = cfg.B_DIAMETER / 2
-        r0, r1 = (0.5 * m * R if is_wedge(cfg) else 0.0), (1 - m) * R   # wedge: keep off the collapsed axis
-    z0, z1 = m * H, (1 - m) * H
+        r0 = max(0.5 * m * R, 0.01 * R) if is_wedge(cfg) else 0.0     # wedge: keep off the collapsed axis
+        r1 = (1 - m) * R - gw
+    z0, z1 = m * H + gw, (1 - m) * H - gw
     rng = random.Random(pp.get("seed", 1))
     seen, out = set(), []
     for _ in pp["diameters"]:
@@ -1815,9 +1829,19 @@ def injection_positions(cfg, d):
     return out, dict(r=(r0, r1), z=(z0, z1))
 
 
+def region_text(cfg, d):
+    reg = d.get("injection_region") or {}
+    if reg.get("mode") == "cellZone":
+        return (f"cellZoneInjection over the whole liquid (cellZone 'liquid', {reg['V'] * 1e6:.4g} cm3), random points "
+                "in every cell")
+    where = "whole liquid" if reg.get("mode") == "domain" else "central region"
+    return (f"{where}: r = {1e3 * reg['r'][0]:.4g}-{1e3 * reg['r'][1]:.4g} mm, z = {1e3 * reg['z'][0]:.4g}-"
+            f"{1e3 * reg['z'][1]:.4g} mm, random unique points{' within 90 % of the wedge angle' if is_wedge(cfg) else ''}")
+
+
 def release_text(pp):
     rd = pp.get("release_duration", 0) or 0
-    return (f"evenly over t = {fmt(pp['SOI'])}-{fmt(pp['SOI'] + rd)} s" if rd > 0
+    return (f"evenly over t = {fmt(pp['SOI'])}-{fmt(pp['SOI'] + rd)} s" if rd > 0 and pp.get("injection") != "cellZone"
             else f"at t = {fmt(pp['SOI'])} s")
 
 
@@ -1845,14 +1869,65 @@ def write_cloud(c, cfg, d):
     prop = dict(pp["particle"])
     if prop.get("mu0") is None:
         prop["mu0"] = d["mu"]
-    sets, region = injection_positions(cfg, d)
-    d["injection_region"] = region
+    mode = injection_mode(cfg)
     injectors = []
+    if mode == "cellZone":
+        # cellZoneInjection over the cellZone 'liquid' (all cells, made by topoSet in Allrun): parcels placed
+        # randomly in each cell, numberDensity = parcels / mesh volume; all released at SOI
+        vol = d["V"] * wedge_frac(cfg)
+        d["injection_region"] = dict(mode="cellZone", V=vol)
+        c.write("system/topoSetDict.liquid", """
+actions
+(
+    {
+        name    liquidCells;
+        type    cellSet;
+        action  new;
+        source  boxToCell;
+        box     (-1 -1 -1) (1 1 1);
+    }
+    {
+        name    liquid;
+        type    cellZoneSet;
+        action  new;
+        source  setToCellZone;
+        set     liquidCells;
+    }
+);
+""", obj="topoSetDict")
+        for i, dp in enumerate(pp["diameters"]):
+            injectors.append(f"""
+        injection{i}
+        {{
+            type            cellZoneInjection;
+            injectorID      {i};
+            cellZone        liquid;
+            numberDensity   {int(pp['n_per_injection']) / vol:.10g};      // [1/m3]: ~{int(pp['n_per_injection'])} parcels in {vol:.6g} m3
+            massTotal       0;
+            parcelBasisType fixed;
+            nParticle       1;
+            SOI             {fmt(pp['SOI'])};
+            U0              (0 0 0);
+            sizeDistribution
+            {{
+                type        fixedValue;
+                fixedValueDistribution
+                {{
+                    value   {dp:g};      // [m]
+                }}
+            }}
+        }}""")
+        sets = []
+    else:
+        sets, region = injection_positions(cfg, d)
+        d["injection_region"] = dict(region, mode=mode)
     for i, (dp, pts) in enumerate(zip(pp["diameters"], sets)):
         name = f"{CLOUD}Positions{i}"
         rd = pp.get("release_duration", 0) or 0
         dur = (f"\n            duration        {fmt(rd)};      // released one by one (file order) over this time"
                if rd > 0 else "")
+        oob = "\n            ignoreOutOfBounds yes;      // whole domain: drop a point outside the polygonal walls" \
+            if mode == "domain" else ""
         c.write(f"constant/{name}", f"{len(pts)}\n(\n"
                 + "\n".join(f"({x:.9g} {y:.9g} {z:.9g})" for x, y, z in pts) + "\n)", cls="vectorField", obj=name)
         injectors.append(f"""
@@ -1860,7 +1935,7 @@ def write_cloud(c, cfg, d):
         {{
             type            manualInjection;
             injectorID      {i};
-            positionsFile   "{name}";
+            positionsFile   "{name}";{oob}
             massTotal       0;
             parcelBasisType fixed;
             nParticle       1;
@@ -1897,7 +1972,7 @@ def write_cloud(c, cfg, d):
             }""")
     c.write(f"constant/{CLOUD}Properties", f"""
 // {len(pp['diameters'])} injectors x {int(pp['n_per_injection'])} parcels, released {release_text(pp)}
-// region: r = {1e3 * region['r'][0]:.4g}-{1e3 * region['r'][1]:.4g} mm, z = {1e3 * region['z'][0]:.4g}-{1e3 * region['z'][1]:.4g} mm{" (within 90 % of the wedge angle)" if is_wedge(cfg) else ""}
+// {region_text(cfg, d)}
 
 solution
 {{
@@ -2655,6 +2730,7 @@ def write_scripts(c, cfg, d):
     body = head + f"""
 runApplication blockMesh
 {"runApplication topoSet" + chr(10) + "runApplication createPatch -overwrite" if shell else ""}
+{"runApplication -s liquid topoSet -dict system/topoSetDict.liquid      # cellZone 'liquid' for the particle injection" if particles_on(cfg) and injection_mode(cfg) == "cellZone" else ""}
 restore0Dir
 runApplication checkMesh
 {"runApplication decomposePar" if par else ""}
@@ -2855,9 +2931,9 @@ def write_summary(c, cfg, d, warnings, note):
         *([f"Particles         : {CLOUD} (nuclearCloudSourceSingle, one-way, transient stage), "
            f"{len(cfg.PARTICLES['diameters'])} injectors x {int(cfg.PARTICLES['n_per_injection'])} parcels "
            f"released {release_text(cfg.PARTICLES)}, d = " + ", ".join(f"{x:g}" for x in cfg.PARTICLES["diameters"]) + " m",
-           f"                    region r = {1e3 * d['injection_region']['r'][0]:.3g}-{1e3 * d['injection_region']['r'][1]:.3g} mm, "
-           f"z = {1e3 * d['injection_region']['z'][0]:.3g}-{1e3 * d['injection_region']['z'][1]:.3g} mm; walls "
-           f"{cfg.PARTICLES['walls']}" + (", wedge faces elastic rebound (= 100 % recycling)" if is_wedge(cfg) else "")]
+           f"                    {region_text(cfg, d)}",
+           f"                    walls {cfg.PARTICLES['walls']}"
+           + (", wedge faces elastic rebound (= 100 % recycling)" if is_wedge(cfg) else "")]
           if particles_on(cfg) else []),
         "",
         "Warnings:" if warnings else "Warnings: none",
@@ -3035,7 +3111,7 @@ def mesh_rows(cfg):
 
 
 def questionnaire(cfg):
-    N = 7
+    N = 8
     cfg.THERMAL_BC ={k: dict(v) for k, v in cfg.THERMAL_BC.items()}
     print("\nHeated-pool case set-up (OpenFOAM v2606, buoyantBoussinesq{Simple,Pimple}Foam, laminar)")
     print("Press Enter to accept the suggested answer.  Liquid properties are placeholders in caseDefaults.py.")
@@ -3063,6 +3139,13 @@ def questionnaire(cfg):
     cfg.BOUNDARY_LAYER = Ask.yes("\nRefine the mesh towards the walls (boundary layer)?", cfg.BOUNDARY_LAYER)
     if cfg.BOUNDARY_LAYER:
         cfg.BL_FIRST_CELL = 1e-6 * Ask.number("   first-cell thickness", 1e6 * cfg.BL_FIRST_CELL, 1, 200, "um", soft=(10, 80))
+    cfg.MESH_TYPE = Ask.choice("Mesh type?", [
+        ("3D", "full 3D mesh"),
+        ("wedge", f"axisymmetric wedge ({getattr(cfg, 'WEDGE_ANGLE', 5.0):g} deg, one cell around): same steady "
+                  "results, ~100x fewer cells"),
+    ], getattr(cfg, "MESH_TYPE", "3D"))
+    if cfg.MESH_TYPE == "wedge":
+        cfg.WEDGE_ANGLE = Ask.number("   wedge angle", getattr(cfg, "WEDGE_ANGLE", 5.0), 1, 10, "deg")
     cfg.MESH_LEVEL = Ask.choice("Mesh level?", mesh_rows(cfg), cfg.MESH_LEVEL)
 
     section(4, N, "Heat source and initial temperature")
@@ -3110,17 +3193,6 @@ def questionnaire(cfg):
     a = Ask._read(f"\nStart from the fields of a finished case with the same mesh? "
                   f"path relative to {os.path.basename(HERE)}/, '-' for none [{cur or 'none'}]: ")
     cfg.INITIAL_FIELDS = None if a == "-" else (a or cur or None)
-    cl = dict(getattr(cfg, "CLUSTER", None) or {"enabled": False, "ntasks": 64, "account": "", "extra": []})
-    cl["enabled"] = Ask.yes("\nRun on a SLURM cluster (writes Allrun.slurm for sbatch instead of Allrun)?",
-                            bool(cl.get("enabled")))
-    if cl["enabled"]:
-        cl["ntasks"] = int(Ask.number("   MPI tasks (#SBATCH -n)", cl.get("ntasks", 64), 1, 100000))
-        a = Ask._read(f"   account (#SBATCH -A), '-' for none [{cl.get('account') or 'none'}]: ")
-        cl["account"] = "" if a == "-" else (a or cl.get("account", ""))
-        cfg.N_PROCS = cl["ntasks"]
-    else:
-        cfg.N_PROCS = int(Ask.number("Processors", cfg.N_PROCS, 1, 1024))
-    cfg.CLUSTER = cl
 
     section(7, N, "Lagrangian fission-product particles (transient stage)")
     pp = dict(cfg.PARTICLES)
@@ -3146,12 +3218,38 @@ def questionnaire(cfg):
             print("   ! diameters must lie between 1e-10 and 1e-3 m")
         pp["n_per_injection"] = int(Ask.number("   parcels per injector (one injector per diameter)",
                                                pp["n_per_injection"], 1, 1e7))
+        pp["injection"] = Ask.choice("   where are the particles released?", [
+            ("domain", "random points in the whole liquid (manualInjection: exact number, gradual release possible)"),
+            ("central", f"random points in a central region ({100 * pp.get('margin', 0.25):g} % margin to every surface)"),
+            ("cellZone", "cellZoneInjection over the whole liquid (all at SOI, number ~ per cell volume)"),
+        ], pp.get("injection", "domain"))
         pp["SOI"] = Ask.number("   release start after the start of the transient stage", pp["SOI"], 1e-6,
                                cfg.TRANSIENT_END_TIME, "s")
         pp["release_duration"] = Ask.number("   release duration (0 = all at once)",
                                             pp.get("release_duration", 0) or 0, 0,
                                             cfg.TRANSIENT_END_TIME - pp["SOI"], "s")
     cfg.PARTICLES = pp
+
+    section(8, N, "Parallel run")
+    # suggestion: a wedge has a few thousand cells - serial for the flow alone; with particles the parcel
+    # tracking dominates and is split over the processors as well
+    wedge, parts = cfg.MESH_TYPE == "wedge", bool(cfg.PARTICLES.get("enabled"))
+    suggest = (4 if parts else 1) if wedge else cfg.N_PROCS
+    if wedge:
+        print(f"\n   wedge: ~{derive(cfg)['mesh']['cells']:,} cells -> "
+              + ("the parcel tracking dominates: a few processors help" if parts
+                 else "serial is fastest for the flow alone"))
+    cl = dict(getattr(cfg, "CLUSTER", None) or {"enabled": False, "ntasks": 64, "account": "", "extra": []})
+    cl["enabled"] = Ask.yes("\nRun on a SLURM cluster (writes Allrun.slurm for sbatch instead of Allrun)?",
+                            bool(cl.get("enabled")))
+    if cl["enabled"]:
+        cl["ntasks"] = int(Ask.number("   MPI tasks (#SBATCH -n)", suggest if wedge else cl.get("ntasks", 64), 1, 100000))
+        a = Ask._read(f"   account (#SBATCH -A), '-' for none [{cl.get('account') or 'none'}]: ")
+        cl["account"] = "" if a == "-" else (a or cl.get("account", ""))
+        cfg.N_PROCS = cl["ntasks"]
+    else:
+        cfg.N_PROCS = int(Ask.number("Processors", suggest, 1, 1024))
+    cfg.CLUSTER = cl
 
 
 # ============================================================================= main
@@ -3182,7 +3280,6 @@ def main():
     if is_wedge(cfg):
         if shell_patches(cfg):
             raise SystemExit("MESH_TYPE 'wedge' does not work with WALL_MODEL 'shell'")
-        cfg.N_PROCS = 1                         # a few thousand cells: serial
     name = cfg.CASE_NAME.format(geo=f"{cfg.GEOMETRY}_{GEOMETRIES[cfg.GEOMETRY]}", mesh=cfg.MESH_LEVEL,
                                 bl="_BL" if cfg.BOUNDARY_LAYER else "", mode=MODE_TAGS[cfg.RUN_MODE])
     if is_wedge(cfg):

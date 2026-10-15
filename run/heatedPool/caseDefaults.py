@@ -209,6 +209,10 @@ CLUSTER = dict(enabled=False, ntasks=64, account="eu", extra=[])
 #                    positions random (seeded), uniform in the 3D volume (r drawn with pdf ~ r), all unique.
 #                    Wedge: angle within 90 % of the wedge; the parcels move across it (Brownian, lift)
 #                    and the wedge faces reflect them.
+#   injection      : "domain"   -> random unique points in the whole liquid (0.25 mm off the walls), manualInjection
+#                    "central"  -> random unique points in the central region (margin, below)
+#                    "cellZone" -> cellZoneInjection over the cellZone 'liquid' (whole mesh, made by topoSet in
+#                                  Allrun): random points in every cell, ~n_per_injection, all at SOI (no duration)
 #   walls          : interaction on every wall and the free surface; the wedge faces rebound elastically,
 #                    which is exactly the axisymmetric equivalent of 100 % recycling through them
 #   particle       : constantProperties (mu0 = salt mu(TRef) unless given)
@@ -218,7 +222,8 @@ PARTICLES = dict(
     n_per_injection=10000,
     SOI=1.0,                                    # [s]
     release_duration=2.0,                       # [s] positions released one by one over this time (0 = all at SOI)
-    margin=0.25,
+    injection="domain",     # "domain": whole liquid, "central": region with margin, "cellZone": cellZoneInjection
+    margin=0.25,            # central region only
     seed=1,
     walls="stick",
     brownian="BrownianMotion",          # stock Li-Ahmadi (exact displacement for dt >> tauP) or "BoundedBrownianMotion" (see README)

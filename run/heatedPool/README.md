@@ -320,7 +320,7 @@ and the medium is grey.
 | `steady` | SIMPLE only |
 | `transient` | PIMPLE from rest, e.g. to reproduce a heat-up. `caseSummary.txt` gives the thermal time constant: run ~3–5 of them |
 
-**SLURM cluster (`CLUSTER`, questionnaire section 6).** With `enabled=True` the case gets `Allrun.slurm` instead
+**SLURM cluster (`CLUSTER`, questionnaire section 8).** With `enabled=True` the case gets `Allrun.slurm` instead
 of `Allrun`; submit it from the case directory with `sbatch Allrun.slurm`. The script:
 
 - has a header of `#SBATCH -n <ntasks>`, `#SBATCH -A <account>` (left out when empty) and any `extra` options
@@ -332,7 +332,7 @@ of `Allrun`; submit it from the case directory with `sbatch Allrun.slurm`. The s
 - keeps the same stage logic as Allrun (steady → move to 0 → transient, particle fvOptions swap);
 - ends with `reconstructPar -newTimes` and `touch foam.foam`.
 
-Wedge cases stay serial (`-n 1`, no decomposition). `ntasks` replaces `N_PROCS`. The OpenFOAM environment comes
+`ntasks` replaces `N_PROCS`; wedges take whatever is set (the questionnaire suggests 1, or 4 with particles; with 1 there is no decomposition). The OpenFOAM environment comes
 from the submitting shell (sbatch exports it by default), as in the HXThermalInlet scripts.
 
 **Starting from a finished case (`INITIAL_FIELDS`).** Set `INITIAL_FIELDS = "cases/<finished case>"` (or
@@ -370,7 +370,7 @@ cloud exists only in the PIMPLE stage.
 | Setting | Value |
 |---|---|
 | injectors | one `manualInjection` per diameter (default 1e-9, 1e-8, 1e-7, 1e-6, 1e-5 m), `injectorID` 0, 1, …, `n_per_injection` parcels each (default 10 000, nParticle 1), released one by one evenly over `release_duration` (default 2 s) from `SOI` (default 1 s into the transient stage); `release_duration = 0` releases them all at SOI. The cloud is only built at the 2nd time step, so SOI must be > 0 |
-| positions | `constant/FPCloudPositions<i>`: random (seeded) and unique, uniform in the volume of the central region (`margin` = 0.25 of the gap/radius and of the height kept free next to every surface) |
+| positions (`injection`) | `domain` (default): random (seeded), unique points uniform in the volume of the whole liquid, 0.25 mm off the walls (`constant/FPCloudPositions<i>`, manualInjection, exact number, gradual release). `central`: the same in the central region (`margin` = 0.25 of the gap/radius and of the height kept free next to every surface). `cellZone`: cellZoneInjection over the cellZone `liquid` (the whole mesh, made by `topoSet -dict system/topoSetDict.liquid` in Allrun): random points in every cell, number ≈ `n_per_injection` (rounded per cell), all released at SOI (no `release_duration`) |
 | forces | sphereDrag, SaffmanMeiLiftForce, gravity (with buoyancy), BrownianMotion λ = 1e-12 (`brownian`, or BoundedBrownianMotion) |
 | integration | U analytical (`u_integration`), T analytical; maxCo 0.5, logFrequency 1000 |
 | heat transfer | AhmedYovanovich (no T coupling back); no decay heat, dispersion, packing, damping or isotropy model |
@@ -533,9 +533,12 @@ Both flows are laminar and axisymmetric in the steady solution, which is what th
 
 ## Axisymmetric wedge cases (`MESH_TYPE = "wedge"`)
 
+Selectable in the questionnaire (section 3, "Mesh type?", with the wedge angle) or with `MESH_TYPE` in `caseDefaults.py`.
 `MESH_TYPE = "wedge"` builds a `WEDGE_ANGLE` (5°) wedge, one cell around, with `front`/`back` wedge patches; for B the axis
 is a collapsed edge (`axis` patch, empty, no faces). Same radial and axial cells as the 3D mesh, case name ending in
-`_wedge`, serial. Boundary conditions given as total powers (power-mode fluxes, the ring flux, the absolute heat source)
+`_wedge`. The processor count is asked in section 8 ("Parallel run"): the suggestion is 1 for the flow alone (a few
+thousand cells, serial is fastest) and 4 with particles, where the parcel tracking dominates and is split across
+the processors (`decomposePar`, `runParallel`, `reconstructPar` with the lagrangian fields). Boundary conditions given as total powers (power-mode fluxes, the ring flux, the absolute heat source)
 are scaled to the wedge; `heatBalance` scales back and reports full-capsule watts. The SIMPLE target for U is 5e-6
 on wedges: the azimuthal component (U ≈ 0) stalls at ~1e-6 while U<sub>r</sub>, U<sub>z</sub>, T and p_rgh converge fully.
 

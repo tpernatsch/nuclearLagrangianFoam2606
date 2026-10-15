@@ -55,7 +55,7 @@ def config_text(geo, lvl):
             f'BL_FIRST_CELL = {BL_MEDIUM * h:.6g}\nBL_GROWTH = {1.15 ** h:.6g}\n'
             f'RUN_MODE = "steady"\nSTEADY_ITERATIONS = 40000\n'
             f'STEADY_WRITE_INTERVAL = 40000\nHEAT_BALANCE_EVERY = 100\n'
-            f'OUTPUT_DIR = "{BASE}"\nCASE_NAME = "{geo}_{lvl}"\n')
+            f'OUTPUT_DIR = "{BASE}"\nCASE_NAME = "{geo}_{lvl}"\nN_PROCS = 1\n')
 
 
 def run():
