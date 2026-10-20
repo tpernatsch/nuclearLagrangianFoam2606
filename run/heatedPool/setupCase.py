@@ -3231,6 +3231,9 @@ def questionnaire(cfg):
         if cfg.RUN_MODE == "transient" and d["tau"]:
             print(f"\n   thermal time constant ~ {d['tau']:.0f} s: a cold start needs ~{3 * d['tau']:.0f}-{5 * d['tau']:.0f} s")
         cfg.TRANSIENT_END_TIME = Ask.number("Transient end time", cfg.TRANSIENT_END_TIME, 0.01, 1e7, "s")
+        n_writes = max(1, round(cfg.TRANSIENT_END_TIME / cfg.TRANSIENT_WRITE_INTERVAL))
+        n_writes = int(Ask.number("   number of write times over the transient stage", n_writes, 1, 10000))
+        cfg.TRANSIENT_WRITE_INTERVAL = cfg.TRANSIENT_END_TIME / n_writes
     cur = getattr(cfg, "INITIAL_FIELDS", None) or ""
     a = Ask._read(f"\nStart from the fields of a finished case with the same mesh? "
                   f"path relative to {os.path.basename(HERE)}/, '-' for none [{cur or 'none'}]: ")
