@@ -38,6 +38,7 @@ License
 #include "Rebound.H"
 #include "RecycleInteraction.H"
 #include "StandardWallInteraction.H"
+#include "StickReplaceInteraction.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -51,7 +52,8 @@ License
     makePatchInteractionModelType(MultiInteraction, CloudType);                \
     makePatchInteractionModelType(Rebound, CloudType);                         \
     makePatchInteractionModelType(RecycleInteraction, CloudType);              \
-    makePatchInteractionModelType(StandardWallInteraction, CloudType);
+    makePatchInteractionModelType(StandardWallInteraction, CloudType);         \
+    makePatchInteractionModelType(StickReplaceInteraction, CloudType);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
