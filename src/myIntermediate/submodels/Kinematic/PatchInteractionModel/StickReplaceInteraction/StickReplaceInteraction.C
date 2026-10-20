@@ -296,6 +296,11 @@ void Foam::StickReplaceInteraction<CloudType>::postEvolve()
                     newp->age() = 0;
                     newp->U() = this->owner().U()[cellOwner];
 
+                    // A new parcel, not the stuck one: own identity
+                    // (typeId, the size group, is kept)
+                    newp->origProc() = Pstream::myProcNo();
+                    newp->origId() = newp->getNewParticleID();
+
                     ++nInjected_;
                     massInjected_ += newp->nParticle()*newp->mass();
 
@@ -318,6 +323,11 @@ void Foam::StickReplaceInteraction<CloudType>::postEvolve()
             newp->active(true);
             newp->age() = 0;
             newp->U() = this->owner().U()[cellOwner];
+
+            // A new parcel, not the stuck one: own identity
+            // (typeId, the size group, is kept)
+            newp->origProc() = Pstream::myProcNo();
+            newp->origId() = newp->getNewParticleID();
 
             ++nInjected_;
             massInjected_ += newp->nParticle()*newp->mass();
