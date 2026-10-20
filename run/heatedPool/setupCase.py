@@ -1871,12 +1871,10 @@ def write_cloud(c, cfg, d):
         prop["mu0"] = d["mu"]
     mode = injection_mode(cfg)
     injectors = []
-    if mode == "cellZone":
-        # cellZoneInjection over the cellZone 'liquid' (all cells, made by topoSet in Allrun): parcels placed
-        # randomly in each cell, numberDensity = parcels / mesh volume; all released at SOI
-        vol = d["V"] * wedge_frac(cfg)
-        d["injection_region"] = dict(mode="cellZone", V=vol)
-        c.write("system/topoSetDict.liquid", """
+    # cellZone 'liquid' (all cells, made by topoSet in Allrun): needed for cellZoneInjection
+    # itself when mode == "cellZone", and always needed as the placement zone for
+    # stickReplaceInteraction (walls == "stick") regardless of injection mode
+    c.write("system/topoSetDict.liquid", """
 actions
 (
     {
@@ -1895,6 +1893,11 @@ actions
     }
 );
 """, obj="topoSetDict")
+    if mode == "cellZone":
+        # cellZoneInjection over the cellZone 'liquid': parcels placed randomly in each cell,
+        # numberDensity = parcels / mesh volume; all released at SOI
+        vol = d["V"] * wedge_frac(cfg)
+        d["injection_region"] = dict(mode="cellZone", V=vol)
         for i, dp in enumerate(pp["diameters"]):
             injectors.append(f"""
         injection{i}
@@ -1970,6 +1973,56 @@ actions
                 e       1;
                 mu      0;
             }""")
+    if pp['walls'] == "stick":
+        # Replace every stuck parcel with a fresh one of the same size, placed
+        # randomly in the cellZone 'liquid' (see stickReplaceInteraction): keeps
+        # the active population from shrinking as particles deposit on the walls
+        inter_nested = [("    " + entry.replace("\n", "\n    ")) for entry in inter]
+        patch_interaction = f"""patchInteractionModel multiInteraction;
+
+    multiInteractionCoeffs
+    {{
+        oneInteractionOnly no;
+
+        model1
+        {{
+            patchInteractionModel localInteraction;
+
+            localInteractionCoeffs
+            {{
+                outputByInjectorId true;
+                writeToFile        true;
+
+                patches
+                (
+{chr(10).join(inter_nested)}
+                );
+            }}
+        }}
+        model2
+        {{
+            patchInteractionModel stickReplaceInteraction;
+
+            stickReplaceInteractionCoeffs
+            {{
+                cellZone    liquid;
+                writeToFile true;
+            }}
+        }}
+    }}"""
+    else:
+        patch_interaction = f"""patchInteractionModel localInteraction;
+
+    localInteractionCoeffs
+    {{
+        outputByInjectorId true;
+        writeToFile        true;
+
+        patches
+        (
+{chr(10).join(inter)}
+        );
+    }}"""
     c.write(f"constant/{CLOUD}Properties", f"""
 // {len(pp['diameters'])} injectors x {int(pp['n_per_injection'])} parcels, released {release_text(pp)}
 // {region_text(cfg, d)}
@@ -2047,18 +2100,7 @@ subModels
 
     dispersionModel none;
 
-    patchInteractionModel localInteraction;
-
-    localInteractionCoeffs
-    {{
-        outputByInjectorId true;
-        writeToFile        true;
-
-        patches
-        (
-{chr(10).join(inter)}
-        );
-    }}
+    {patch_interaction}
 
     surfaceFilmModel none;
     packingModel    none;
@@ -2730,7 +2772,7 @@ def write_scripts(c, cfg, d):
     body = head + f"""
 runApplication blockMesh
 {"runApplication topoSet" + chr(10) + "runApplication createPatch -overwrite" if shell else ""}
-{"runApplication -s liquid topoSet -dict system/topoSetDict.liquid      # cellZone 'liquid' for the particle injection" if particles_on(cfg) and injection_mode(cfg) == "cellZone" else ""}
+{"runApplication -s liquid topoSet -dict system/topoSetDict.liquid      # cellZone 'liquid': particle injection and/or stickReplaceInteraction placement" if particles_on(cfg) else ""}
 restore0Dir
 runApplication checkMesh
 {"runApplication decomposePar" if par else ""}
