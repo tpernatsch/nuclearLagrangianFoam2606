@@ -1795,6 +1795,17 @@ def injection_mode(cfg):
     return (getattr(cfg, "PARTICLES", {}) or {}).get("injection", "central")
 
 
+LIFT_MODELS = {"McLaughlinMei": "McLaughlinMeiLiftForce", "SaffmanMei": "SaffmanMeiLiftForce", "none": None}
+
+
+def lift_entry(pp):
+    """particleForces line of the shear lift (PARTICLES['lift']; configs without it keep Saffman-Mei)."""
+    lift = pp.get("lift", "SaffmanMei")
+    if lift not in LIFT_MODELS:
+        raise SystemExit(f"PARTICLES['lift'] must be one of {list(LIFT_MODELS)}")
+    return f"\n        {LIFT_MODELS[lift]} {{}}" if LIFT_MODELS[lift] else ""
+
+
 def injection_positions(cfg, d):
     """One list of unique points per diameter, random (seeded) and uniform in the 3D volume of the
     central region (margin x gap/radius and x height left free next to every surface).
@@ -2085,8 +2096,7 @@ subModels
 {{
     particleForces
     {{
-        sphereDrag;
-        SaffmanMeiLiftForce {{}}
+        sphereDrag;{lift_entry(pp)}
         gravity;
         {pp.get('brownian', 'BoundedBrownianMotion')}
         {{
@@ -2128,7 +2138,7 @@ cloudFunctions
     patchHits
     {{
         type            particlePostProcessing;     // one record per parcel reaching a wall (position, d, origId, ...)
-        maxStoredParcels {len(pp['diameters']) * int(pp['n_per_injection'])};
+        maxStoredParcels {len(pp['diameters']) * int(pp['n_per_injection']) * (20 if pp['walls'] == "stick" else 1)};   // per write interval{"; stuck parcels are replaced, so a parcel can hit many times" if pp['walls'] == "stick" else ""}
         patches         ({" ".join(walls)});
     }}
 }}

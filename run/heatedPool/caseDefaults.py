@@ -229,6 +229,8 @@ PARTICLES = dict(
     brownian="BrownianMotion",          # stock Li-Ahmadi (exact displacement for dt >> tauP) or "BoundedBrownianMotion" (see README)
     brownian_lambda=1e-12,
     u_integration="analytical",         # exact for frozen forces at any dt/tauP; "CrankNicolson" does not damp for dt >> tauP (README)
+    lift="McLaughlinMei",               # shear lift: "McLaughlinMei" (Saffman x McLaughlin J(eps)/J_inf, Mei's fit; small Re),
+                                        # "SaffmanMei" (Saffman x Mei finite-Re factor; needs eps >> 1) or "none"
     max_co=0.5,
     log_frequency=1000,
     force_magnitudes=True,      # cloud function ForceMagnitudes (needs it registered for nuclear parcels)
