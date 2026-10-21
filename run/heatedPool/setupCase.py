@@ -3289,7 +3289,7 @@ def questionnaire(cfg):
     # suggestion: a wedge has a few thousand cells - serial for the flow alone; with particles the parcel
     # tracking dominates and is split over the processors as well
     wedge, parts = cfg.MESH_TYPE == "wedge", bool(cfg.PARTICLES.get("enabled"))
-    suggest = (4 if parts else 1) if wedge else cfg.N_PROCS
+    suggest = 1 if (wedge and not parts) else cfg.N_PROCS
     if wedge:
         print(f"\n   wedge: ~{derive(cfg)['mesh']['cells']:,} cells -> "
               + ("the parcel tracking dominates: a few processors help" if parts

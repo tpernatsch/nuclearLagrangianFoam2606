@@ -26,7 +26,7 @@ MESH_LEVEL = "medium"          # coarse | medium | fine | xfine | xxfine  (cell 
 BOUNDARY_LAYER = True          # True: geometric wall refinement on no-slip / heat-transfer walls
 BL_FIRST_CELL = 30e-6          # first-cell thickness at refined walls [m]
 BL_GROWTH = 1.15               # max cell-to-cell expansion ratio inside the refined layer
-MESH_TYPE = "3D"               # "3D" | "wedge" (axisymmetric, one cell around: the steady flows are axisymmetric)
+MESH_TYPE = "wedge"             # "3D" | "wedge" (axisymmetric, one cell around: the steady flows are axisymmetric)
 WEDGE_ANGLE = 5.0              # [deg] wedge opening (wedge patches front/back; B: axis as a collapsed edge)
 
 # ----------------------------------------------------------------------------- liquid (salt)
@@ -186,7 +186,7 @@ TRANSIENT_WRITE_INTERVAL = 5.0 # [s]
 MAX_CO = 0.8
 MAX_DELTA_T = 0.05             # [s]
 HEAT_BALANCE_EVERY = 10        # write the heat balance every N time steps / iterations
-N_PROCS = 4
+N_PROCS = 64
 
 # ----------------------------------------------------------------------------- SLURM cluster
 # enabled: write Allrun.slurm (submit from the case directory: sbatch Allrun.slurm) instead of Allrun.
@@ -217,9 +217,9 @@ CLUSTER = dict(enabled=False, ntasks=64, account="eu", extra=[])
 #                    which is exactly the axisymmetric equivalent of 100 % recycling through them
 #   particle       : constantProperties (mu0 = salt mu(TRef) unless given)
 PARTICLES = dict(
-    enabled=False,
-    diameters=[1e-9, 1e-8, 1e-7, 1e-6, 1e-5],   # [m]
-    n_per_injection=10000,
+    enabled=True,
+    diameters=[1e-9, 2e-9, 5e-9, 1e-8, 2e-8, 1e-7, 1e-6, 1e-5, 2e-5, 5e-5, 1e-4],   # [m]
+    n_per_injection=20000,
     SOI=1.0,                                    # [s]
     release_duration=2.0,                       # [s] positions released one by one over this time (0 = all at SOI)
     injection="domain",     # "domain": whole liquid, "central": region with margin, "cellZone": cellZoneInjection
