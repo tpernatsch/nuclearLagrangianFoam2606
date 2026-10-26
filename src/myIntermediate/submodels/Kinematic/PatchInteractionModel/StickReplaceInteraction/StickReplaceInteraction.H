@@ -31,14 +31,24 @@ Description
     patch interaction model in the chain has just stuck (kept in the
     cloud, marked inactive), clones it and injects a fresh replacement
     of the same size/properties at a random volume-weighted position in
-    a named cell zone. Never deletes the stuck parcel, so the total
-    parcel count grows by one per stick event - not a steady-state
-    population (see "park and add" in the design discussion).
+    a named cell zone. By default the stuck parcel stays in the cloud
+    (inactive), so the parcel count grows by one per stick event ("park
+    and add"); with deleteStuck it is removed instead, and the cloud stays
+    at the injected size.
+
+    With writeHits, each stick event is recorded (time of the hit within
+    the step, position on the wall face, age, origProc, origId) and
+    appended at the write times to one file per patch and injector
+    (typeId): <postProcessing>/<startTime>/stickHits_<patch>_<typeId>.dat.
+    Hits after the last write time are not written, so the files match a
+    restart from that time. Together with deleteStuck this keeps every
+    deposit (position and time) without the stuck parcels being tracked.
 
     Meant to be chained after the real stick/rebound/escape model via
     multiInteraction with oneInteractionOnly no - it only observes the
-    keepParticle/active() state the earlier model already set, it never
-    claims or alters the interaction itself.
+    keepParticle/active() state the earlier model already set and never
+    claims the interaction; deleteStuck only turns keepParticle off for a
+    parcel that model has already stuck (and counted).
 
 Usage
     \verbatim
@@ -56,7 +66,12 @@ Usage
         model2
         {
             patchInteractionModel stickReplaceInteraction;
-            stickReplaceInteractionCoeffs { cellZone liquid; }
+            stickReplaceInteractionCoeffs
+            {
+                cellZone    liquid;
+                deleteStuck yes;    // optional, default no
+                writeHits   yes;    // optional, default no
+            }
         }
     }
     \endverbatim
@@ -72,6 +87,10 @@ SourceFiles
 #include "PatchInteractionModel.H"
 #include "tetIndices.H"
 #include "IDLList.H"
+#include "DynamicList.H"
+#include "HashTable.H"
+#include "PtrList.H"
+#include "OFstream.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -125,9 +144,32 @@ protected:
         //  place their replacement
         IDLList<parcelType> stuckParcels_;
 
+        //- Remove the stuck parcel (its replacement keeps the population)
+        const bool deleteStuck_;
+
+        //- Record the stick events and write them to file at write times
+        const bool writeHits_;
+
+        //- Stick events since the last write (this processor)
+        DynamicList<scalar> hitTime_;
+        DynamicList<point> hitPosition_;
+        DynamicList<scalar> hitAge_;
+        DynamicList<label> hitPatch_;
+        DynamicList<label> hitTypeId_;
+        DynamicList<label> hitOrigProc_;
+        DynamicList<label> hitOrigId_;
+
+        //- Hit files (master), one per patch and injector, and their
+        //  index by "<patch>_<typeId>"
+        PtrList<OFstream> hitFiles_;
+        HashTable<label> hitFileIndex_;
+
         //- Number/mass of replacement parcels injected so far
         label nInjected_;
         scalar massInjected_;
+
+        //- Stick events written to file in this run (master)
+        label nHitsWritten_;
 
 
     // Protected Member Functions
@@ -153,6 +195,10 @@ protected:
 
         //- Output file header information
         virtual void writeFileHeader(Ostream& os);
+
+        //- Gather the stick events on the master and append them to the
+        //  hit files (collective: called on every processor)
+        void writeHits();
 
 
 public:
@@ -187,9 +233,9 @@ public:
 
         //- Observe the interaction: if the parcel has just been stuck
         //  (kept, but marked inactive) by an earlier model in the
-        //  chain, clone it for replacement in postEvolve(). Never
-        //  claims the interaction or changes keepParticle/active()
-        //  itself.
+        //  chain, clone it for replacement in postEvolve(), record the
+        //  hit (writeHits) and remove the parcel (deleteStuck). Never
+        //  claims the interaction.
         virtual bool correct
         (
             typename CloudType::parcelType& p,
@@ -197,7 +243,8 @@ public:
             bool& keepParticle
         );
 
-        //- Inject one replacement per parcel that stuck this step
+        //- Inject one replacement per parcel that stuck this step; at the
+        //  write times, write the hits to file
         virtual void postEvolve();
 
         //- Write patch interaction info

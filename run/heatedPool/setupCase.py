@@ -2018,6 +2018,8 @@ actions
             {{
                 cellZone    liquid;
                 writeToFile true;
+                deleteStuck yes;    // the stuck parcel is removed (its replacement keeps the population)
+                writeHits   yes;    // ... after its hit is written: stickHits_<patch>_<typeId>.dat
             }}
         }}
     }}"""
@@ -2033,6 +2035,15 @@ actions
         (
 {chr(10).join(inter)}
         );
+    }}"""
+    # wall hits: with stick + replacement, stickReplaceInteraction writes them (stickHits_<patch>_<typeId>.dat)
+    # and deletes the stuck parcels; otherwise particlePostProcessing keeps one record per parcel
+    patch_hits = "" if pp['walls'] == "stick" else f"""
+    patchHits
+    {{
+        type            particlePostProcessing;     // one record per parcel reaching a wall (position, d, origId, ...)
+        maxStoredParcels {len(pp['diameters']) * int(pp['n_per_injection'])};   // per write interval
+        patches         ({" ".join(walls)});
     }}"""
     c.write(f"constant/{CLOUD}Properties", f"""
 // {len(pp['diameters'])} injectors x {int(pp['n_per_injection'])} parcels, released {release_text(pp)}
@@ -2134,13 +2145,7 @@ cloudFunctions
     {{
         type            patchInteractionFields;     // deposited mass/count per wall face (cumulative)
         resetMode       none;
-    }}
-    patchHits
-    {{
-        type            particlePostProcessing;     // one record per parcel reaching a wall (position, d, origId, ...)
-        maxStoredParcels {len(pp['diameters']) * int(pp['n_per_injection']) * (20 if pp['walls'] == "stick" else 1)};   // per write interval{"; stuck parcels are replaced, so a parcel can hit many times" if pp['walls'] == "stick" else ""}
-        patches         ({" ".join(walls)});
-    }}
+    }}{patch_hits}
 }}
 """, obj=f"{CLOUD}Properties")
 

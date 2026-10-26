@@ -371,13 +371,13 @@ cloud exists only in the PIMPLE stage.
 |---|---|
 | injectors | one `manualInjection` per diameter (default 1e-9, 1e-8, 1e-7, 1e-6, 1e-5 m), `injectorID` 0, 1, …, `n_per_injection` parcels each (default 10 000, nParticle 1), released one by one evenly over `release_duration` (default 2 s) from `SOI` (default 1 s into the transient stage); `release_duration = 0` releases them all at SOI. The cloud is only built at the 2nd time step, so SOI must be > 0 |
 | positions (`injection`) | `domain` (default): random (seeded), unique points uniform in the volume of the whole liquid, 0.25 mm off the walls (`constant/FPCloudPositions<i>`, manualInjection, exact number, gradual release). `central`: the same in the central region (`margin` = 0.25 of the gap/radius and of the height kept free next to every surface). `cellZone`: cellZoneInjection over the cellZone `liquid` (the whole mesh, made by `topoSet -dict system/topoSetDict.liquid` in Allrun): random points in every cell, number ≈ `n_per_injection` (rounded per cell), all released at SOI (no `release_duration`) |
-| forces | sphereDrag, SaffmanMeiLiftForce, gravity (with buoyancy), BrownianMotion λ = 1e-12 (`brownian`, or BoundedBrownianMotion) |
+| forces | sphereDrag, shear lift (`lift`: `McLaughlinMei` = Saffman × McLaughlin's J(ε)/J∞, Mei's fit, default; `SaffmanMei`; `none`), gravity (with buoyancy), BrownianMotion λ = 1e-12 (`brownian`, or BoundedBrownianMotion) |
 | integration | U analytical (`u_integration`), T analytical; maxCo 0.5, logFrequency 1000 |
 | heat transfer | AhmedYovanovich (no T coupling back); no decay heat, dispersion, packing, damping or isotropy model |
 | particle | ρ 10980, T0 883 K, cp 296, κ 115, μ0 = salt μ(T_ref) |
 | carrier | ρ and ν constant at T_ref (the fvOption takes constants: the drag does not follow the Arrhenius μ(T), ±20 % over the salt) |
-| walls | localInteraction, `stick` on every wall and on the free surface, `outputByInjectorId`, `writeToFile` |
-| cloud functions | `forceMagnitudes` (switch `force_magnitudes`), `patchInteractionFields` (cumulative deposition per face), `particlePostProcessing` on the walls (one record per hit) |
+| walls | multiInteraction: localInteraction (`stick` on every wall and on the free surface, `outputByInjectorId`, `writeToFile`) + stickReplaceInteraction: each stuck parcel is replaced by a new one (own ID, age 0) at a random point of the cellZone `liquid`, its hit (time, position, age, origProc, origId) is written to `postProcessing/lagrangian/FPCloud/patchInteractionModel/<startTime>/stickHits_<patch>_<typeId>.dat` at the write times, and the stuck parcel is deleted (`deleteStuck`, `writeHits`): the cloud stays at the injected size |
+| cloud functions | `forceMagnitudes` (switch `force_magnitudes`; recomputes drag/gravity/Saffman-Mei lift with the constant carrier properties, not the forces applied), `patchInteractionFields` (cumulative deposition per face); `particlePostProcessing` (one record per hit) only when the walls are not `stick` |
 
 **Wedges.** The nuclear parcels keep a velocity component across the wedge, from the Brownian kicks and the
 lift (the 1 µm parcels of the smoke test reached U_y ≈ 4 mm/s and spread over the whole wedge angle), so they

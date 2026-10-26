@@ -28,6 +28,7 @@ License
 #include "StickReplaceInteraction.H"
 #include "polyMeshTetDecomposition.H"
 #include "PstreamBuffers.H"
+#include "globalIndex.H"
 
 // * * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * //
 
@@ -181,6 +182,77 @@ void Foam::StickReplaceInteraction<CloudType>::writeFileHeader(Ostream& os)
 }
 
 
+template<class CloudType>
+void Foam::StickReplaceInteraction<CloudType>::writeHits()
+{
+    // Collect the hits of all processors on the master (collective call)
+    const List<scalar> t(globalIndex::gatherOp(hitTime_));
+    const List<point> x(globalIndex::gatherOp(hitPosition_));
+    const List<scalar> age(globalIndex::gatherOp(hitAge_));
+    const labelList patchi(globalIndex::gatherOp(hitPatch_));
+    const labelList typeId(globalIndex::gatherOp(hitTypeId_));
+    const labelList origProc(globalIndex::gatherOp(hitOrigProc_));
+    const labelList origId(globalIndex::gatherOp(hitOrigId_));
+
+    hitTime_.clear();
+    hitPosition_.clear();
+    hitAge_.clear();
+    hitPatch_.clear();
+    hitTypeId_.clear();
+    hitOrigProc_.clear();
+    hitOrigId_.clear();
+
+    if (!Pstream::master())
+    {
+        return;
+    }
+
+    forAll(t, i)
+    {
+        const word key
+        (
+            mesh_.boundaryMesh()[patchi[i]].name() + "_" + Foam::name(typeId[i])
+        );
+
+        label fi = hitFileIndex_.lookup(key, -1);
+
+        if (fi < 0)
+        {
+            // One file per patch and injector, in the start-time folder
+            autoPtr<OFstream> osPtr = this->newFileAtStartTime("stickHits_" + key);
+
+            if (!osPtr)
+            {
+                continue;
+            }
+
+            osPtr->precision(10);
+            *osPtr
+                << "# Parcels stuck on " << mesh_.boundaryMesh()[patchi[i]].name()
+                << ", injector (typeId) " << typeId[i] << nl
+                << "# Time\tx\ty\tz\tage\torigProc\torigId" << nl;
+
+            fi = hitFiles_.size();
+            hitFiles_.resize(fi + 1);
+            hitFiles_.set(fi, osPtr.release());
+            hitFileIndex_.insert(key, fi);
+        }
+
+        hitFiles_[fi]
+            << t[i] << tab
+            << x[i].x() << tab << x[i].y() << tab << x[i].z() << tab
+            << age[i] << tab << origProc[i] << tab << origId[i] << nl;
+    }
+
+    forAll(hitFiles_, fi)
+    {
+        hitFiles_[fi].flush();
+    }
+
+    nHitsWritten_ += t.size();
+}
+
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class CloudType>
@@ -193,8 +265,11 @@ Foam::StickReplaceInteraction<CloudType>::StickReplaceInteraction
     PatchInteractionModel<CloudType>(dict, cloud, typeName),
     mesh_(cloud.mesh()),
     cellZoneName_(this->coeffDict().template get<word>("cellZone")),
+    deleteStuck_(this->coeffDict().getOrDefault("deleteStuck", false)),
+    writeHits_(this->coeffDict().getOrDefault("writeHits", false)),
     nInjected_(0),
-    massInjected_(0)
+    massInjected_(0),
+    nHitsWritten_(0)
 {
     buildZoneData();
 }
@@ -214,8 +289,20 @@ Foam::StickReplaceInteraction<CloudType>::StickReplaceInteraction
     cellTetCumulativeV_(pim.cellTetCumulativeV_),
     cellCumulativeV_(pim.cellCumulativeV_),
     sumProcV_(pim.sumProcV_),
+    deleteStuck_(pim.deleteStuck_),
+    writeHits_(pim.writeHits_),
+    hitTime_(pim.hitTime_),
+    hitPosition_(pim.hitPosition_),
+    hitAge_(pim.hitAge_),
+    hitPatch_(pim.hitPatch_),
+    hitTypeId_(pim.hitTypeId_),
+    hitOrigProc_(pim.hitOrigProc_),
+    hitOrigId_(pim.hitOrigId_),
+    hitFiles_(),        // output files are not copied
+    hitFileIndex_(),
     nInjected_(pim.nInjected_),
-    massInjected_(pim.massInjected_)
+    massInjected_(pim.massInjected_),
+    nHitsWritten_(pim.nHitsWritten_)
 {}
 
 
@@ -225,7 +312,7 @@ template<class CloudType>
 bool Foam::StickReplaceInteraction<CloudType>::correct
 (
     typename CloudType::parcelType& p,
-    const polyPatch&,
+    const polyPatch& pp,
     bool& keepParticle
 )
 {
@@ -235,9 +322,33 @@ bool Foam::StickReplaceInteraction<CloudType>::correct
     if (keepParticle && !p.active())
     {
         stuckParcels_.append(static_cast<parcelType*>(p.clone().ptr()));
+
+        if (writeHits_)
+        {
+            // Time of the hit within the step, position on the wall face
+            const Time& runTime = this->owner().db().time();
+
+            hitTime_.push_back
+            (
+                runTime.value() - (1 - p.stepFraction())*runTime.deltaTValue()
+            );
+            hitPosition_.push_back(p.position());
+            hitAge_.push_back(p.age());
+            hitPatch_.push_back(pp.index());
+            hitTypeId_.push_back(p.typeId());
+            hitOrigProc_.push_back(p.origProc());
+            hitOrigId_.push_back(p.origId());
+        }
+
+        if (deleteStuck_)
+        {
+            // Counted by the stick model and recorded above: remove it, so
+            // the cloud does not grow with the deposits
+            keepParticle = false;
+        }
     }
 
-    // Observing only - never claims or alters the interaction itself
+    // Never claims the interaction (the stick model did)
     return false;
 }
 
@@ -335,6 +446,12 @@ void Foam::StickReplaceInteraction<CloudType>::postEvolve()
             this->owner().addParticle(newp);
         }
     }
+
+    // Hits to file at the write times (consistent with a restart from them)
+    if (writeHits_ && this->owner().db().time().writeTime())
+    {
+        writeHits();
+    }
 }
 
 
@@ -356,6 +473,12 @@ void Foam::StickReplaceInteraction<CloudType>::info()
 
     Log_<< "    Stuck-parcel replacement: injected into " << cellZoneName_
         << " = " << npr << ", " << mpr << nl;
+
+    if (writeHits_)
+    {
+        Log_<< "    Stuck-parcel hits written to file (this run) = "
+            << returnReduce(nHitsWritten_, maxOp<label>()) << nl;
+    }
 
     this->file() << tab << npr << tab << mpr << endl;
 
