@@ -23,7 +23,12 @@ OUTPUT_DIR = "cases"                          # relative to this file
 # =============================================================================
 TUBE_DIAMETER = 0.030        # [dW] Table 3.1
 TUBE_HEIGHT = 0.35           # your column; [dW] rig 0.45 m, [dW] CFD 0.30 m (full) / 0.50 m (free surface)
+                             # (used only with TOP_BOUNDARY = "freeSurface")
 LIQUID_HEIGHT = 0.30         # static liquid level, [dW] Table 3.1 - FIXED, not asked
+# "degassing"  : the domain ends at the liquid level; the top is an outlet for the gas and a free-slip
+#                lid for the liquid (no free surface, no air head space; [dW] CFD 0.30 m, "full")
+# "freeSurface": air head space up to TUBE_HEIGHT, open top; the free surface is resolved by the E-E model
+TOP_BOUNDARY = "degassing"
 
 # =============================================================================
 # Mesh: curved O-grid (square core with arc edges + 4 outer blocks)
@@ -43,6 +48,13 @@ CORE_ARC_RADIUS = 0.0085     # radius of the core-edge arc midpoints [m] ([dW]: 
                              # = CORE_HALF_SIDE -> straight core edges (classic O-grid)
 RADIAL_GRADING = 1.0         # outer-ring grading, last/first cell (<1 refines at the wall); [dW]: 1
 
+# "3D": full tube (curved O-grid).  "wedge": axisymmetric 2D wedge, one cell thick, with Nc uniform
+# radial cells of the core size (2*CORE_HALF_SIDE/Nc) and the same dz -> ~1/30 of the 3D cells.
+# The injector becomes a true disc and there is no O-grid imprint, but swirl / meandering of the
+# bubble column are impossible (fine for a steady, axisymmetric RAS solution).
+DOMAIN = "3D"
+WEDGE_ANGLE = 5.0            # total wedge angle [deg] (symmetric about the x-z plane)
+
 # =============================================================================
 # Fluids (T = 293.15 K)
 # =============================================================================
@@ -58,7 +70,8 @@ FLOW_REFERENCE = "actual"    # "actual" (20 C, 1 atm, as used in [dW]),
                              # "normal" (0 C, 1 atm - Bronkhorst ln/min), "standard" (20 C, 1 atm)
 INJECTOR_DIAMETER = 1.0e-3   # orifice diameter [m] ([dW]: 1 mm gap in a flat plate)
 INJECTOR_POSITION = (0.0, 0.0)   # (x, y) [m]; (0, 0) = centred.  [dW]: off-centre (riser)
-INJECTOR_ZONE_RADIUS = None  # radius of the mass-source cellZone [m]; None = auto (>= 1.5 core cells)
+INJECTOR_ZONE_RADIUS = None  # radius of the mass-source cellZone [m]; None = auto: diameter = bubble diameter
+                             # (at least the orifice and 1.5 core cells)
 INJECTOR_ZONE_HEIGHT = None  # height of the cellZone above the bottom [m]; None = auto (2 cells)
 INJECTION_START = 0.01       # [s]  [dW]
 INJECTION_DURATION = 1000.0  # [s]  [dW] used 40 s = whole run; keep > END_TIME for continuous injection
@@ -82,10 +95,12 @@ ASPECT_RATIO = "constant"        # "constant" (E = 1, [dW]), "Wellek", "Vakhrush
 # =============================================================================
 # "laminar"         : both phases laminar.  NOTE: all v2606 turbulent-dispersion models scale with
 #                     the liquid k or nut, so turbulent dispersion is effectively OFF when laminar.
-# "LaheyKEpsilon"   : liquid LaheyKEpsilon + gas continuousGasKEpsilon   ([dW] setups A, B)
-# "kOmegaSSTSato"   : liquid kOmegaSSTSato + gas laminar                 ([dW] setup C)
+# "LaheyKEpsilon"   : liquid LaheyKEpsilon (k-epsilon + Lahey BIT source + Sato BIT viscosity)
+#                     + gas continuousGasKEpsilon ([dW] setups A, B). The gas cannot be laminar: the
+#                     v2606 phase-inversion term divides by the gas k.
+# "kOmegaSSTSato"   : liquid kOmegaSSTSato (Sato BIT viscosity) + gas laminar   ([dW] setup C)
 # "mixtureKEpsilon" : mixtureKEpsilon in both phases (v2606 bubbleColumn tutorial)
-TURBULENCE = "LaheyKEpsilon"
+TURBULENCE = "kOmegaSSTSato"
 
 DRAG = "IshiiZuber"              # [dW]; alt: "TomiyamaCorrelated", "TomiyamaAnalytic", "SchillerNaumann"
 LIFT = "Tomiyama"                # [dW]; alt: "constant" (uses LIFT_CL), None (no lift)
@@ -114,7 +129,8 @@ MAX_CO = 0.5
 MAX_DELTA_T = 1.0e-3
 N_OUTER_CORRECTORS = 3           # [dW]
 N_CORRECTORS = 1                 # [dW]
-FACE_MOMENTUM = True             # stabilises the free surface (v2606 option)
+FACE_MOMENTUM = True             # stabilises the free surface (v2606 option); ignored (off) with TOP_BOUNDARY
+                                 # "degassing": it makes the gas under the outlet run away while no gas is there
 RELAXATION = 1.0                 # [dW]: 0.85
 N_PROCS = 8                      # [dW]: 16 on DelftBlue
 
@@ -130,5 +146,6 @@ LDA_RADII = [0.0005, 0.0015, 0.0025, 0.0045, 0.0065, 0.0085, 0.0105, 0.0125, 0.0
 # Angles of the radial paths [deg].  No baffle -> full circle; [dW] used 7 paths over a half circle.
 LDA_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315]
 PROBE_WRITE_EVERY = 1            # write probes every N time steps (LDA statistics need every step)
+PROBE_INTERPOLATION = "cellPoint"  # "cellPoint" (interpolated) or "cell" (value of the cell the probe is in)
 
 WRITE_PHASE_FORCES = False       # write drag / lift / TD / VM force fields (diagnostics)

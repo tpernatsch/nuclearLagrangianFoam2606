@@ -116,6 +116,39 @@ def bubble_diameter(cfg, Q):
             return d0 + (d1 - d0) * (Q - q0) / (q1 - q0), "BUBBLE_TABLE (interpolated)"
 
 
+def is_wedge(cfg):
+    return getattr(cfg, "DOMAIN", "3D") == "wedge"
+
+
+def lda_angles(cfg):
+    """Angles of the radial probe paths: a wedge has a single path, in its mid plane (y = 0)."""
+    return ([0] if cfg.LDA_ANGLES else []) if is_wedge(cfg) else list(cfg.LDA_ANGLES)
+
+
+def is_degassing(cfg):
+    return getattr(cfg, "TOP_BOUNDARY", "freeSurface") == "degassing"
+
+
+def face_momentum(cfg):
+    """faceMomentum only with the free surface. With the degassing top the cells under the outlet hold no gas
+    for the first seconds, and with faceMomentum the gas there is accelerated without bound (no drag on the
+    outlet faces, where alpha.air = 0): |U.air| -> 14 m/s in 4 ms and the Ur Courant number drives dt to 1e-8 s."""
+    return cfg.FACE_MOMENTUM and not is_degassing(cfg)
+
+
+def gas_turbulence(cfg):
+    """Gas-phase turbulence, fixed by the liquid model.
+    LaheyKEpsilon needs a gas k-epsilon: its phase-inversion transfer term uses epsilon/k of the gas
+    (LaheyKEpsilon.C, phaseTransferCoeff) -> continuousGasKEpsilon (a laminar gas gives 0/0).
+    kOmegaSSTSato only needs the gas velocity, fraction and diameter -> laminar gas."""
+    return {"mixtureKEpsilon": "mixtureKEpsilon", "LaheyKEpsilon": "continuousGasKEpsilon"}.get(cfg.TURBULENCE, "laminar")
+
+
+def cell_count(cfg, m):
+    Nz = max(1, round(cfg.TUBE_HEIGHT / m["dz"]))
+    return m["Nc"] * Nz if is_wedge(cfg) else (m["Nc"] ** 2 + 4 * m["Nc"] * m["Nr"]) * Nz
+
+
 def tomiyama_cl(Eo, Re):
     f = 0.0010422 * Eo ** 3 - 0.0159 * Eo ** 2 - 0.0204 * Eo + 0.474    # v2606 coefficients
     if Eo < 4:
@@ -154,9 +187,13 @@ def derive(cfg, Q):
     m = dict(cfg.MESH_CUSTOM) if cfg.MESH_CUSTOM else dict(MESH_LEVELS[cfg.MESH_LEVEL])
     m["Nz"] = max(1, round(cfg.TUBE_HEIGHT / m["dz"]))
     m["dz"] = cfg.TUBE_HEIGHT / m["Nz"]
-    m["cells"] = (m["Nc"] ** 2 + 4 * m["Nc"] * m["Nr"]) * m["Nz"]
+    m["cells"] = cell_count(cfg, m)
     s, ra = cfg.CORE_HALF_SIDE, cfg.CORE_ARC_RADIUS
     m["d_core"] = 2 * s / m["Nc"]
+    wedge = is_wedge(cfg)
+    d["wedge"] = wedge
+    d["frac"] = cfg.WEDGE_ANGLE / 360.0 if wedge else 1.0     # simulated fraction of the tube
+    d["mdot_case"] = d["mdot"] * d["frac"]                     # gas mass source in the simulated domain
     m["d_arc"] = 0.5 * math.pi * R / m["Nc"]
     m["d_rad_mean"] = (R - ra) / m["Nr"]
     g = cfg.RADIAL_GRADING
@@ -167,14 +204,22 @@ def derive(cfg, Q):
         rr = g ** (1 / (m["Nr"] - 1)) if m["Nr"] > 1 else 1
         first = L * (1 - rr) / (1 - rr ** m["Nr"]) if abs(rr - 1) > 1e-12 else L / m["Nr"]
         m["d_rad_wall"] = first * rr ** (m["Nr"] - 1)
-    m["h"] = (d["A"] * cfg.TUBE_HEIGHT / m["cells"]) ** (1 / 3)
+    m["h"] = (d["frac"] * d["A"] * cfg.TUBE_HEIGHT / m["cells"]) ** (1 / 3)
+    if wedge:   # uniform radial cells of the core size; h = radial x axial (the tangential size is not a resolution)
+        m["d_rad"] = R / m["Nc"]
+        m["h"] = math.sqrt(m["d_rad"] * m["dz"])
     d["mesh"] = m
 
     # injector zone
-    zr = cfg.INJECTOR_ZONE_RADIUS or max(cfg.INJECTOR_DIAMETER / 2, 1.5 * m["d_core"])
+    # auto: zone diameter = bubble diameter (the gas leaves as bubbles of d_b), at least the orifice and 1.5 core
+    # cells; the wider zone also takes more of the square core cells, so the source is closer to a disc
+    zr = cfg.INJECTOR_ZONE_RADIUS or max(cfg.INJECTOR_DIAMETER / 2, 1.5 * m["d_core"], db / 2)
     zh = cfg.INJECTOR_ZONE_HEIGHT or 2.0 * m["dz"]
     d["inj_r"], d["inj_h"] = zr, zh
-    d["inj_cells_est"] = math.pi * zr * zr / (m["d_core"] ** 2) * (zh / m["dz"])
+    if wedge:   # cells whose centre is inside r < zr, over the zone height
+        d["inj_cells_est"] = round(zr / m["d_rad"] + 0.5) * (zh / m["dz"])
+    else:
+        d["inj_cells_est"] = math.pi * zr * zr / (m["d_core"] ** 2) * (zh / m["dz"])
 
     # bubble numbers
     drho = liq["rho"] - P_ATM / (Rg * T)
@@ -203,7 +248,7 @@ def checks(cfg, d):
         w.append("CORE_ARC_RADIUS must be >= CORE_HALF_SIDE and well inside the tube radius.")
     if cfg.CORE_HALF_SIDE * math.sqrt(2) >= R * 0.85:
         w.append("CORE_HALF_SIDE too large: core corners come too close to the wall.")
-    if cfg.LIQUID_HEIGHT >= cfg.TUBE_HEIGHT - 0.02:
+    if not is_degassing(cfg) and cfg.LIQUID_HEIGHT >= cfg.TUBE_HEIGHT - 0.02:
         w.append("Less than 20 mm of head space: the swelling level may reach the outlet.")
     for z in cfg.LDA_HEIGHTS:
         if z <= d["inj_h"] + 0.01 or z >= cfg.LIQUID_HEIGHT - 0.01:
@@ -231,6 +276,73 @@ def checks(cfg, d):
 
 
 # ============================================================================= writers
+def write_wedge_mesh(c, cfg, d):
+    m = d["mesh"]
+    R, H = d["R"], cfg.TUBE_HEIGHT
+    c.write("system/blockMeshDict", f"""
+// Axisymmetric wedge: one block with the axis edge collapsed (prism cells on the axis),
+// {cfg.WEDGE_ANGLE:g} deg in total, symmetric about the x-z plane. x = radial, z = axial (up).
+scale   1;
+
+R   {fmt(R)};     // tube radius
+H   {fmt(H)};     // tube height
+th  {fmt(cfg.WEDGE_ANGLE / 2)};    // half wedge angle [deg]
+
+Rx  #eval{{ $R*cos(degToRad($th)) }};
+Ry  #eval{{ $R*sin(degToRad($th)) }};
+Rym #eval{{ -$Ry }};
+
+vertices
+(
+    (0 0 0)  ($Rx $Rym 0)  ($Rx $Ry 0)       // 0-2
+    (0 0 $H) ($Rx $Rym $H) ($Rx $Ry $H)      // 3-5
+);
+
+Nr  {m['Nc']};    // radial cells (dr = {1e3*m['d_rad']:.3f} mm)
+Nz  {m['Nz']};    // axial cells (dz = {1e3*m['dz']:.3f} mm)
+
+blocks
+(
+    hex (0 1 2 0 3 4 5 3) ($Nr 1 $Nz) simpleGrading (1 1 1)
+);
+
+edges
+(
+    arc 1 2 ($R 0 0)
+    arc 4 5 ($R 0 $H)
+);
+
+boundary
+(
+    bottom
+    {{
+        type wall;
+        faces ( (0 0 2 1) );
+    }}
+    wall
+    {{
+        type wall;
+        faces ( (1 2 5 4) );
+    }}
+    atmosphere
+    {{
+        type patch;
+        faces ( (3 4 5 3) );
+    }}
+    front
+    {{
+        type wedge;
+        faces ( (0 1 4 3) );
+    }}
+    back
+    {{
+        type wedge;
+        faces ( (0 3 5 2) );
+    }}
+);
+""")
+
+
 def write_mesh(c, cfg, d):
     m = d["mesh"]
     R, H, s, ra = d["R"], cfg.TUBE_HEIGHT, cfg.CORE_HALF_SIDE, cfg.CORE_ARC_RADIUS
@@ -238,7 +350,10 @@ def write_mesh(c, cfg, d):
     # outer blocks run from the wall (vertices 4-7) to the core (0-3) in the local y
     # direction, so a grading of 1/g gives last/first = g from wall to core.
     gr = 1.0 / g
-    c.write("system/blockMeshDict", f"""
+    if d["wedge"]:
+        write_wedge_mesh(c, cfg, d)
+    else:
+        c.write("system/blockMeshDict", f"""
 // Curved O-grid ([dW] App. C.3): square core with arc edges + 4 outer blocks.
 // z = axial (up), origin at the centre of the tube bottom.
 scale   1;
@@ -303,7 +418,7 @@ boundary
 );
 """)
     x0, y0 = cfg.INJECTOR_POSITION
-    zl = min(cfg.LIQUID_HEIGHT - 0.005, cfg.LIQUID_HEIGHT)
+    zl = cfg.TUBE_HEIGHT + 1.0 if is_degassing(cfg) else cfg.LIQUID_HEIGHT - 0.005
     c.write("system/topoSetDict", f"""
 actions
 (
@@ -378,24 +493,30 @@ boundaryField
     atmosphere
     {{
 {indent(atm, 8)}
-    }}
+    }}{wedges}
 }}
 """, cls=cls)
+
+    wedges = "\n    \"(front|back)\"\n    {\n        type            wedge;\n    }" if d["wedge"] else ""
 
     zg = "type            zeroGradient;"
     calc = "type            calculated;\nvalue           $internalField;"
     io = lambda ph, v="$internalField": (f"type            inletOutlet;\nphi             phi.{ph};\n"
                                           f"inletValue      {v};\nvalue           {v};")
 
+    # top patch: "freeSurface" = open atmosphere above the head space (air flows in and out);
+    # "degassing" = the liquid surface itself: outlet for the gas, free-slip lid for the liquid
+    degas = is_degassing(cfg)
     for ph in ("air", "water"):
         noslip = "type            noSlip;"
-        field(f"U.{ph}", "[0 1 -1 0 0 0 0]", "uniform (0 0 0)", noslip, noslip,
-              f"type            pressureInletOutletVelocity;\nphi             phi.{ph};\nvalue           $internalField;",
-              cls="volVectorField")
+        top = ("type            slip;" if degas and ph == "water" else
+               f"type            pressureInletOutletVelocity;\nphi             phi.{ph};\nvalue           $internalField;")
+        field(f"U.{ph}", "[0 1 -1 0 0 0 0]", "uniform (0 0 0)", noslip, noslip, top, cls="volVectorField")
         field(f"T.{ph}", "[0 0 0 1 0 0 0]", f"uniform {T}", zg, zg, io(ph))
 
-    field("alpha.air", "[0 0 0 0 0 0 0]", "uniform 0", zg, zg, io("air", "uniform 1"))
-    field("alpha.water", "[0 0 0 0 0 0 0]", "uniform 1", zg, zg, io("water", "uniform 0"))
+    # backflow through the top: air (open atmosphere) or liquid (degassing: no gas enters from above)
+    field("alpha.air", "[0 0 0 0 0 0 0]", "uniform 0", zg, zg, io("air", "uniform 0" if degas else "uniform 1"))
+    field("alpha.water", "[0 0 0 0 0 0 0]", "uniform 1", zg, zg, io("water", "uniform 1" if degas else "uniform 0"))
     field("p", "[1 -1 -2 0 0 0 0]", f"uniform {P_ATM}", calc, calc, calc)
     ffp = "type            fixedFluxPressure;\nvalue           $internalField;"
     field("p_rgh", "[1 -1 -2 0 0 0 0]", f"uniform {P_ATM}", ffp, ffp,
@@ -414,7 +535,7 @@ boundaryField
         field(f"alphat.{ph}", "[1 -1 -1 0 0 0 0]", "uniform 0", aw, aw, calc)
 
     if turb in ("LaheyKEpsilon", "mixtureKEpsilon"):
-        for ph in ("air", "water"):
+        for ph in ("air", "water") if gas_turbulence(cfg) != "laminar" else ("water",):
             keps(ph)
             alphat(ph)
     if turb == "mixtureKEpsilon":
@@ -490,6 +611,7 @@ mixture
     else:
         ras = lambda mdl: f"simulationType  RAS;\nRAS\n{{\n    RASModel        {mdl};\n    turbulence      on;\n    printCoeffs     on;\n}}"
         if turb == "LaheyKEpsilon":
+            # the gas needs k and epsilon (LaheyKEpsilon phase-inversion term): continuousGasKEpsilon
             tw, ta = ras("LaheyKEpsilon"), ras("continuousGasKEpsilon")
         elif turb == "mixtureKEpsilon":
             tw, ta = ras("mixtureKEpsilon"), ras("mixtureKEpsilon")
@@ -680,10 +802,12 @@ pMin            10000;
 """)
 
     # ---- gas injection
+    wnote = (f"// wedge of {cfg.WEDGE_ANGLE:g} deg: the sources below are {d['frac']:.6g} x the tube values\n"
+             if d["wedge"] else "")
     c.write("constant/fvOptions", f"""
 // {d['Q_lpm']} L/min ({cfg.FLOW_REFERENCE} conditions) = {d['mdot']:.4e} kg/s of air
 // = {d['Q_actual_inj']*6e4:.4f} L/min actual at the injector (p = {d['p_inj']:.0f} Pa)
-options
+{wnote}options
 {{
     airMassSource
     {{
@@ -695,7 +819,7 @@ options
         volumeMode      absolute;
         sources
         {{
-            thermo:rho.air  ({d['mdot']:.6e} 0);      // kg/s
+            thermo:rho.air  ({d['mdot_case']:.6e} 0);      // kg/s
         }}
     }}
 
@@ -709,7 +833,7 @@ options
         volumeMode      absolute;
         sources
         {{
-            e.air           ({d['mdot']*d['e_in']:.6e} 0);   // W = mdot * e(T)
+            e.air           ({d['mdot_case']*d['e_in']:.6e} 0);   // W = mdot * e(T)
         }}
     }}
 }}
@@ -804,7 +928,7 @@ PIMPLE
     nOuterCorrectors {cfg.N_OUTER_CORRECTORS};
     nCorrectors      {cfg.N_CORRECTORS};
     nNonOrthogonalCorrectors 0;
-    faceMomentum     {'yes' if cfg.FACE_MOMENTUM else 'no'};
+    faceMomentum     {'yes' if face_momentum(cfg) else 'no'};
 }}
 
 relaxationFactors
@@ -820,7 +944,45 @@ def functions_dict(cfg, d):
     rmax = R * 0.995
     turb = cfg.TURBULENCE != "laminar"
     kfield = "k.water" if turb else ""
+    # the axis is the edge of a wedge: sample just off it, inside the axis cells
+    x_ax = 0.25 * d["mesh"]["d_rad"] if d["wedge"] else 0.0
     out = []
+    if is_degassing(cfg):     # the slip lid should keep the liquid in: net and gross liquid flow through the top
+        top_monitor = """liquidOut   // liquid mass flow through the degassing top [kg/s]: net (sum) and gross (sumMag)
+{
+    type            surfaceFieldValue;
+    libs            (fieldFunctionObjects);
+    regionType      patch;
+    name            atmosphere;
+    operation       sum;
+    fields          (alphaRhoPhi.water);
+    writeFields     false;
+    writeControl    timeStep;
+    writeInterval   10;
+}
+
+liquidOutMag
+{
+    $liquidOut;
+    operation       sumMag;
+}
+"""
+    else:
+        top_monitor = f"""freeSurfaceLines    // alpha.water along vertical lines: level = alpha.water 0.5 crossing
+{{
+    type            sets;
+    libs            (sampling);
+    writeControl    writeTime;
+    interpolationScheme cell;
+    setFormat       raw;
+    fields          (alpha.water);
+    sets
+    {{
+        axis   {{ type uniform; axis z; start ({fmt(x_ax)} 0 {fmt(cfg.LIQUID_HEIGHT - 0.05)}); end ({fmt(x_ax)} 0 {fmt(cfg.TUBE_HEIGHT - 1e-4)}); nPoints 400; }}
+        rHalf  {{ type uniform; axis z; start ({fmt(R/2)} 0 {fmt(cfg.LIQUID_HEIGHT - 0.05)}); end ({fmt(R/2)} 0 {fmt(cfg.TUBE_HEIGHT - 1e-4)}); nPoints 400; }}
+    }}
+}}
+"""
 
     out.append(f"""
 // ---------------------------------------------------------------- run monitors
@@ -850,21 +1012,7 @@ gasOut      // gas mass flow leaving through the top [kg/s]
     writeInterval   10;
 }}
 
-freeSurfaceLines    // alpha.water along vertical lines: level = alpha.water 0.5 crossing
-{{
-    type            sets;
-    libs            (sampling);
-    writeControl    writeTime;
-    interpolationScheme cell;
-    setFormat       raw;
-    fields          (alpha.water);
-    sets
-    {{
-        axis   {{ type uniform; axis z; start (0 0 {fmt(cfg.LIQUID_HEIGHT - 0.05)}); end (0 0 {fmt(cfg.TUBE_HEIGHT - 1e-4)}); nPoints 400; }}
-        rHalf  {{ type uniform; axis z; start ({fmt(R/2)} 0 {fmt(cfg.LIQUID_HEIGHT - 0.05)}); end ({fmt(R/2)} 0 {fmt(cfg.TUBE_HEIGHT - 1e-4)}); nPoints 400; }}
-    }}
-}}
-
+{top_monitor}
 // ---------------------------------------------------------------- averaging
 alphaUair   // alpha-weighted gas velocity = mean(alpha U)/mean(alpha)
 {{
@@ -945,7 +1093,7 @@ flowZ{i}        // area integrals: Q_down = int(UzDown), Q_up = int(UzUp), A_dow
     # probes at LDA points
     pts = []
     for z in cfg.LDA_HEIGHTS:
-        for a in cfg.LDA_ANGLES:
+        for a in lda_angles(cfg):
             th = math.radians(a)
             for r in cfg.LDA_RADII:
                 pts.append(f"({fmt(r*math.cos(th))} {fmt(r*math.sin(th))} {fmt(z)})")
@@ -959,6 +1107,7 @@ ldaProbes
     type            probes;
     libs            (sampling);
     timeStart       $tAvg;
+    interpolationScheme {getattr(cfg, 'PROBE_INTERPOLATION', 'cellPoint')};   // cellPoint: no jumps between cells
     fields          ({pfields});
     writeControl    timeStep;
     writeInterval   {cfg.PROBE_WRITE_EVERY};
@@ -971,6 +1120,9 @@ ldaProbes
 
     sets = []
     for i, z in enumerate(cfg.LDA_HEIGHTS, 1):
+        if d["wedge"]:      # one radius, axis to wall, in the wedge mid plane
+            sets.append(f"z{i}x {{ $_line; start ({fmt(x_ax)} 0 {fmt(z)}); end ({fmt(rmax)} 0 {fmt(z)}); }}")
+            continue
         sets.append(f"z{i}x {{ $_line; start ({fmt(-rmax)} 0 {fmt(z)}); end ({fmt(rmax)} 0 {fmt(z)}); }}")
         sets.append(f"z{i}y {{ $_line; start (0 {fmt(-rmax)} {fmt(z)}); end (0 {fmt(rmax)} {fmt(z)}); }}")
     surfs = [f"z{i} {{ $_plane; pointAndNormalDict {{ point (0 0 {fmt(z)}); normal (0 0 1); }} }}"
@@ -1089,14 +1241,24 @@ def write_summary(c, cfg, d, warnings, cfg_path):
         f"Bubble diameter        : {1e3*d['db']:.3f} mm  [{d['db_src']}]  model {cfg.DIAMETER_MODEL}",
         f"Eo / Mo / Re_b(U=0.4)  : {d['Eo']:.2f} / {d['Mo']:.2e} / {d['Re_b']:.0f}",
         f"Tomiyama C_L           : {d['CL']:+.3f}   (sign change at d_b = {1e3*d['d_CL0']:.2f} mm for this liquid)",
-        f"Turbulence             : {cfg.TURBULENCE}",
+        f"Turbulence             : {cfg.TURBULENCE} (gas: {gas_turbulence(cfg)})",
+        f"Top boundary           : " + ("degassing: liquid surface at z = H, gas outlet + free-slip liquid"
+                                        if is_degassing(cfg) else f"open atmosphere, free surface at {cfg.LIQUID_HEIGHT} m"),
         f"Interfacial            : drag {cfg.DRAG}, lift {cfg.LIFT} (damping Cd={cfg.LIFT_WALL_DAMPING_CD}), "
         f"WL {cfg.WALL_LUBRICATION}, TD {cfg.TURB_DISPERSION} (Ctd {cfg.TD_CTD}), Cvm {cfg.VIRTUAL_MASS_CVM}",
         "",
+    ] + ([
+        f"Mesh                   : {cfg.MESH_LEVEL if not cfg.MESH_CUSTOM else 'custom'}, axisymmetric wedge of {cfg.WEDGE_ANGLE:g} deg  "
+        f"Nr={m['Nc']} Nz={m['Nz']}  -> {m['cells']} cells",
+        f"Cell sizes [mm]        : radial {1e3*m['d_rad']:.2f}, dz {1e3*m['dz']:.2f}",
+        f"Cell / d_b             : radial {m['d_rad']/d['db']:.2f}, dz {m['dz']/d['db']:.2f}",
+        f"Wedge scaling          : gas source, gasOut and flowZ* integrals are {d['frac']:.6g} x the tube values",
+    ] if d["wedge"] else [
         f"Mesh                   : {cfg.MESH_LEVEL if not cfg.MESH_CUSTOM else 'custom'}  Nc={m['Nc']} Nr={m['Nr']} Nz={m['Nz']}  -> {m['cells']} cells",
         f"Cell sizes [mm]        : core {1e3*m['d_core']:.2f}, arc {1e3*m['d_arc']:.2f}, radial (mean) {1e3*m['d_rad_mean']:.2f}, "
         f"radial (wall) {1e3*m['d_rad_wall']:.2f}, dz {1e3*m['dz']:.2f}, h=(V/N)^1/3 {1e3*m['h']:.2f}",
         f"Cell / d_b             : core {m['d_core']/d['db']:.2f}, arc {m['d_arc']/d['db']:.2f}, dz {m['dz']/d['db']:.2f}, h {m['h']/d['db']:.2f}",
+    ]) + [
         f"Injector zone          : r = {1e3*d['inj_r']:.2f} mm, h = {1e3*d['inj_h']:.2f} mm (~{d['inj_cells_est']:.0f} cells)",
         "",
         f"LDA heights [m]        : {cfg.LDA_HEIGHTS}",
@@ -1223,12 +1385,16 @@ def section(i, n, title):
 def mesh_table(cfg, db):
     rows = []
     for lvl, m in MESH_LEVELS.items():
-        Nz = max(1, round(cfg.TUBE_HEIGHT / m["dz"]))
-        cells = (m["Nc"] ** 2 + 4 * m["Nc"] * m["Nr"]) * Nz
-        h = (math.pi * (cfg.TUBE_DIAMETER / 2) ** 2 * cfg.TUBE_HEIGHT / cells) ** (1 / 3)
+        cells = cell_count(cfg, m)
         core = 2 * cfg.CORE_HALF_SIDE / m["Nc"]
-        desc = (f"{lvl:<9}  {cells/1000:6.1f} k cells   mean cell {1e3*h:.1f} mm   "
-                f"cell/d_b {min(core, m['dz'])/db:.2f}-{max(h, m['dz'])/db:.2f}")
+        if is_wedge(cfg):
+            dr = cfg.TUBE_DIAMETER / 2 / m["Nc"]
+            desc = (f"{lvl:<9}  {cells/1000:6.1f} k cells   radial {1e3*dr:.2f} mm, dz {1e3*m['dz']:.2f} mm   "
+                    f"cell/d_b {min(dr, m['dz'])/db:.2f}-{max(dr, m['dz'])/db:.2f}")
+        else:
+            h = (math.pi * (cfg.TUBE_DIAMETER / 2) ** 2 * cfg.TUBE_HEIGHT / cells) ** (1 / 3)
+            desc = (f"{lvl:<9}  {cells/1000:6.1f} k cells   mean cell {1e3*h:.1f} mm   "
+                    f"cell/d_b {min(core, m['dz'])/db:.2f}-{max(h, m['dz'])/db:.2f}")
         rows.append((lvl, desc))
     return rows
 
@@ -1260,17 +1426,31 @@ def questionnaire(cfg):
 
     # ------------------------------------------------------------------ 2
     section(2, N, "Geometry and mesh")
-    cfg.TUBE_HEIGHT = Ask.number(
-        f"Tube height in m (the liquid level stays at {cfg.LIQUID_HEIGHT:.2f} m; the rest is air head space).\n"
-        "   Format *.** (e.g. 0.35). Thesis rig: 0.45 m; thesis free-surface CFD: 0.50 m.",
-        cfg.TUBE_HEIGHT, cfg.LIQUID_HEIGHT + 0.02, 1.5, "m", pattern=r"\d\.\d\d",
-        pattern_hint="*.** (e.g. 0.35)", soft=(0.35, 0.60))
+    cfg.TOP_BOUNDARY = Ask.choice("Top boundary?", [
+        ("degassing", f"domain ends at the liquid level ({cfg.LIQUID_HEIGHT:.2f} m): gas outlet, free-slip lid for the "
+                      "liquid (no free surface)"),
+        ("freeSurface", "air head space above the liquid, open top: the free surface is resolved"),
+    ], getattr(cfg, "TOP_BOUNDARY", "degassing"))
+    if is_degassing(cfg):
+        cfg.TUBE_HEIGHT = cfg.LIQUID_HEIGHT
+    else:
+        cfg.TUBE_HEIGHT = Ask.number(
+            f"Tube height in m (the liquid level stays at {cfg.LIQUID_HEIGHT:.2f} m; the rest is air head space).\n"
+            "   Format *.** (e.g. 0.35). Thesis rig: 0.45 m; thesis free-surface CFD: 0.50 m.",
+            max(cfg.TUBE_HEIGHT, cfg.LIQUID_HEIGHT + 0.05), cfg.LIQUID_HEIGHT + 0.02, 1.5, "m", pattern=r"\d\.\d\d",
+            pattern_hint="*.** (e.g. 0.35)", soft=(0.35, 0.60))
+    cfg.DOMAIN = Ask.choice("Domain?", [
+        ("3D", "full 3D tube, curved O-grid (allows swirl / meandering; square-core imprint near the injector)"),
+        ("wedge", f"axisymmetric {cfg.WEDGE_ANGLE:g} deg wedge (~30x fewer cells, disc-shaped injector; "
+                  "steady axisymmetric flow only)"),
+    ], getattr(cfg, "DOMAIN", "3D"))
     db0 = bubble_diameter(cfg, cfg.Q_LPM[0])[0]
     cfg.MESH_CUSTOM = None
     cfg.MESH_LEVEL = Ask.choice(
-        f"Mesh (curved O-grid; cell/d_b evaluated for d_b = {1e3*db0:.2f} mm at {cfg.Q_LPM[0]} L/min)?",
+        f"Mesh ({'wedge, same radial and axial cell size as the 3D core' if is_wedge(cfg) else 'curved O-grid'}; "
+        f"cell/d_b evaluated for d_b = {1e3*db0:.2f} mm at {cfg.Q_LPM[0]} L/min)?",
         mesh_table(cfg, db0), cfg.MESH_LEVEL,
-        notes="thesis mesh study: coarse 19k / medium 50k / fine 128k / extrafine 309k cells for 0.30 m")
+        notes="thesis mesh study: coarse 19k / medium 50k / fine 128k / extrafine 309k cells for 0.30 m (3D)")
 
     # ------------------------------------------------------------------ 3
     section(3, N, "Bubbles")
@@ -1295,8 +1475,9 @@ def questionnaire(cfg):
     section(4, N, "Physics")
     cfg.TURBULENCE = Ask.choice("Turbulence model?", [
         ("laminar", "laminar (no turbulent dispersion possible, see note)"),
-        ("LaheyKEpsilon", "RAS k-epsilon with bubble-induced turbulence: LaheyKEpsilon + continuousGasKEpsilon (thesis setup B)"),
-        ("kOmegaSSTSato", "RAS k-omega SST with Sato BIT viscosity + laminar gas (thesis setup C; mesh-converged in the thesis)"),
+        ("LaheyKEpsilon", "RAS k-epsilon + BIT (Lahey source, Sato viscosity); gas continuousGasKEpsilon "
+                          "(required by the v2606 model), thesis setup B"),
+        ("kOmegaSSTSato", "RAS k-omega SST with Sato BIT viscosity + LAMINAR gas (thesis setup C; mesh-converged in the thesis)"),
         ("mixtureKEpsilon", "RAS mixture k-epsilon (v2606 bubbleColumn tutorial)"),
     ], cfg.TURBULENCE,
         notes="thesis downcomer Re = 225-550: laminar bulk with bubble-induced pseudo-turbulence")
@@ -1342,12 +1523,16 @@ def questionnaire(cfg):
         "   Each plane gets LDA-point probes, mean profiles and the surface-averaged void fraction.\n"
         f"   Allowed 0.02-{zmax:.2f} m (above the injector, below the free surface).",
         cfg.LDA_HEIGHTS, 0.02, zmax, "m", pattern=r"0\.\d{1,3}", pattern_hint="0.** (e.g. 0.15)")
-    layout = Ask.choice("LDA points on each plane?", [
-        ("8", "thesis radii (10 per path, 0.5-14.5 mm) on 8 radial paths (every 45 deg) = 80 points/plane"),
-        ("4", "thesis radii on 4 radial paths (every 90 deg) = 40 points/plane (smaller files)"),
-        ("0", "no LDA-point probes (mean profiles and plane averages only)"),
-    ], "8" if len(cfg.LDA_ANGLES) == 8 else ("4" if cfg.LDA_ANGLES else "0"))
-    cfg.LDA_ANGLES = {"8": [0, 45, 90, 135, 180, 225, 270, 315], "4": [0, 90, 180, 270], "0": []}[layout]
+    if is_wedge(cfg):
+        print("\n   Wedge: the LDA points (thesis radii, 0.5-14.5 mm) lie on one radial path, in the wedge mid plane.")
+        cfg.LDA_ANGLES = [0]
+    else:
+        layout = Ask.choice("LDA points on each plane?", [
+            ("8", "thesis radii (10 per path, 0.5-14.5 mm) on 8 radial paths (every 45 deg) = 80 points/plane"),
+            ("4", "thesis radii on 4 radial paths (every 90 deg) = 40 points/plane (smaller files)"),
+            ("0", "no LDA-point probes (mean profiles and plane averages only)"),
+        ], "8" if len(cfg.LDA_ANGLES) == 8 else ("4" if len(cfg.LDA_ANGLES) > 1 else "0"))
+        cfg.LDA_ANGLES = {"8": [0, 45, 90, 135, 180, 225, 270, 315], "4": [0, 90, 180, 270], "0": []}[layout]
 
     # ------------------------------------------------------------------ 6
     section(6, N, "Run control")
@@ -1355,8 +1540,11 @@ def questionnaire(cfg):
     cfg.AVERAGE_START = Ask.number("Start of time averaging in s (after the start-up transient).",
                                    min(cfg.AVERAGE_START, cfg.END_TIME / 2), 0.0, cfg.END_TIME - 0.5, "s")
     ncpu = os.cpu_count() or 1
-    cfg.N_PROCS = int(Ask.number(f"Number of processors (this machine has {ncpu}; thesis: 16).",
-                                 min(cfg.N_PROCS, ncpu), 1, 1024, pattern=r"\d+", pattern_hint="an integer"))
+    cells = cell_count(cfg, dict(MESH_LEVELS[cfg.MESH_LEVEL]))
+    sugg = max(1, min(cfg.N_PROCS, ncpu, cells // 5000))          # >= ~5000 cells per processor
+    cfg.N_PROCS = int(Ask.number(f"Number of processors (this machine has {ncpu}; thesis: 16; "
+                                 f"{cells/1000:.1f} k cells -> suggested {sugg}).",
+                                 sugg, 1, 1024, pattern=r"\d+", pattern_hint="an integer"))
     cfg.WRITE_INTERVAL = Ask.number(
         f"Write a time folder every ... s (minimum 1 s). Disk: ~{disk_estimate(cfg)['per_time_MB']:.0f} MB per time folder.",
         max(cfg.WRITE_INTERVAL, 1.0), 1.0, cfg.END_TIME, "s")
@@ -1387,7 +1575,8 @@ def advanced(cfg):
     cfg.RELAXATION = Ask.number("Relaxation factor (1 = none; thesis 0.85).", cfg.RELAXATION, 0.3, 1.0)
     cfg.N_OUTER_CORRECTORS = int(Ask.number("PIMPLE outer correctors (thesis 3).", cfg.N_OUTER_CORRECTORS, 1, 20,
                                             pattern=r"\d+", pattern_hint="an integer"))
-    cfg.FACE_MOMENTUM = Ask.yes("Use faceMomentum (damps free-surface oscillations)?", cfg.FACE_MOMENTUM)
+    if not is_degassing(cfg):     # always off with the degassing top (see face_momentum)
+        cfg.FACE_MOMENTUM = Ask.yes("Use faceMomentum (damps free-surface oscillations)?", cfg.FACE_MOMENTUM)
     cfg.ASPECT_RATIO = Ask.choice("Bubble aspect ratio model?", [
         ("constant", "constant E = 1 (thesis)"), ("Wellek", "Wellek"),
         ("VakhrushevEfremov", "Vakhrushev-Efremov"), ("Tomiyama", "Tomiyama"),
@@ -1395,15 +1584,22 @@ def advanced(cfg):
     cfg.VIRTUAL_MASS_CVM = Ask.number("Virtual mass coefficient (thesis 0.5).", cfg.VIRTUAL_MASS_CVM, 0.0, 2.0)
     cfg.PROBE_WRITE_EVERY = int(Ask.number("Write LDA probes every N time steps.", cfg.PROBE_WRITE_EVERY, 1, 1000,
                                            pattern=r"\d+", pattern_hint="an integer"))
+    cfg.PROBE_INTERPOLATION = Ask.choice("LDA probe values?", [
+        ("cellPoint", "interpolated between cells (smooth profiles)"),
+        ("cell", "value of the cell the probe is in (steps where two probes share a cell)"),
+    ], getattr(cfg, "PROBE_INTERPOLATION", "cellPoint"))
     cfg.WRITE_PHASE_FORCES = Ask.yes("Write the interfacial force fields (phaseForces)?", cfg.WRITE_PHASE_FORCES)
     cfg.INJECTOR_DIAMETER = 1e-6 * round(1e3 * Ask.number("Injector orifice diameter in mm (thesis 1.0).",
                                               1e3 * cfg.INJECTOR_DIAMETER, 0.1, 10.0, "mm"))
+    zr = Ask.number("Radius of the gas-source zone in mm (0 = auto: zone diameter = bubble diameter).",
+                    1e3 * cfg.INJECTOR_ZONE_RADIUS if cfg.INJECTOR_ZONE_RADIUS else 0.0, 0.0, 10.0, "mm")
+    cfg.INJECTOR_ZONE_RADIUS = 1e-6 * round(1e3 * zr) if zr > 0 else None
 
 
 def disk_estimate(cfg):
     """Rough disk use of one case: time folders (binary fields) and LDA probe files (ascii)."""
     m = dict(cfg.MESH_CUSTOM) if cfg.MESH_CUSTOM else dict(MESH_LEVELS[cfg.MESH_LEVEL])
-    cells = (m["Nc"] ** 2 + 4 * m["Nc"] * m["Nr"]) * max(1, round(cfg.TUBE_HEIGHT / m["dz"]))
+    cells = cell_count(cfg, m)
     turb = cfg.TURBULENCE != "laminar"
     per_time = cells * (60 if turb else 50) * 8 / 1e6          # ~60 doubles per cell incl. means and fluxes
     n_written = max(1, int(cfg.END_TIME / cfg.WRITE_INTERVAL))
@@ -1413,7 +1609,7 @@ def disk_estimate(cfg):
     fields = per_time * (kept + (1 if cfg.N_PROCS > 1 and not clean else 0))  # processor* + reconstructed latest
     dt = cfg.FIXED_TIME_STEP or cfg.MAX_DELTA_T                  # ~1 ms in practice
     lines = max(0.0, cfg.END_TIME - cfg.AVERAGE_START) / dt / max(1, cfg.PROBE_WRITE_EVERY)
-    npts = len(cfg.LDA_HEIGHTS) * len(cfg.LDA_ANGLES) * len(cfg.LDA_RADII)
+    npts = len(cfg.LDA_HEIGHTS) * len(lda_angles(cfg)) * len(cfg.LDA_RADII)
     probes = lines * npts * (45 + 15 + (15 if turb else 0)) / 1e6
     return dict(per_time_MB=per_time, kept=kept, fields_MB=fields, probes_MB=probes, npts=npts)
 
@@ -1429,7 +1625,7 @@ def print_overview(cfg):
     print(f"\n{'=' * 78}\n Summary\n{'=' * 78}")
     rows = [
         ("liquid", cfg.LIQUID), ("flowrate(s)", f"{', '.join(f'{q:g}' for q in cfg.Q_LPM)} L/min ({cfg.FLOW_REFERENCE})"),
-        ("tube / liquid height", f"{cfg.TUBE_HEIGHT} m / {cfg.LIQUID_HEIGHT} m"), ("mesh", cfg.MESH_LEVEL),
+        ("tube / liquid height", f"{cfg.TUBE_HEIGHT} m / {cfg.LIQUID_HEIGHT} m"), ("mesh", cfg.MESH_LEVEL + (f" ({cfg.WEDGE_ANGLE:g} deg wedge)" if is_wedge(cfg) else " (3D)")),
         ("bubble diameter", ", ".join(f"{1e3*bubble_diameter(cfg, q)[0]:.2f} mm" for q in cfg.Q_LPM) + f" ({cfg.DIAMETER_MODEL})"),
         ("turbulence", cfg.TURBULENCE),
         ("forces", f"drag {cfg.DRAG}, lift {cfg.LIFT} (damping {cfg.LIFT_WALL_DAMPING_CD}), "
@@ -1460,12 +1656,22 @@ def main():
         note = "questionnaire" if interactive else "caseDefaults.py"
     if not isinstance(cfg.Q_LPM, (list, tuple)):
         cfg.Q_LPM = [cfg.Q_LPM]
+    cfg.DOMAIN = getattr(cfg, "DOMAIN", "3D")          # settings files written before the wedge option
+    cfg.WEDGE_ANGLE = getattr(cfg, "WEDGE_ANGLE", 5.0)
+    cfg.TOP_BOUNDARY = getattr(cfg, "TOP_BOUNDARY", "freeSurface")
 
     if interactive:
         questionnaire(cfg)
         print_overview(cfg)
         if not Ask.yes("\nCreate the case(s)?", True):
             raise SystemExit("nothing written")
+    if cfg.DOMAIN not in ("3D", "wedge"):
+        raise SystemExit('DOMAIN must be "3D" or "wedge"')
+    cfg.LDA_ANGLES = lda_angles(cfg)                    # one path in a wedge (also saved in caseSettings.py)
+    if cfg.TOP_BOUNDARY not in ("degassing", "freeSurface"):
+        raise SystemExit('TOP_BOUNDARY must be "degassing" or "freeSurface"')
+    if is_degassing(cfg):
+        cfg.TUBE_HEIGHT = cfg.LIQUID_HEIGHT             # the domain ends at the liquid surface
 
     if cfg.LIQUID not in FLUIDS:
         raise SystemExit(f"LIQUID must be one of {list(FLUIDS)}")
@@ -1477,7 +1683,7 @@ def main():
         d = derive(cfg, Q)
         name = cfg.CASE_NAME.format(Q=f"{Q:g}", db=f"{1e3*d['db']:.3g}mm",
                                     turb=TURB_TAGS.get(cfg.TURBULENCE, cfg.TURBULENCE),
-                                    mesh=cfg.MESH_LEVEL if not cfg.MESH_CUSTOM else "custom")
+                                    mesh=(cfg.MESH_LEVEL if not cfg.MESH_CUSTOM else "custom") + ("Wedge" if is_wedge(cfg) else ""))
         root = os.path.join(base, name)
         if os.path.exists(root):
             if not (force or (interactive and Ask.yes(f"\n{root} exists. Overwrite?", False))):
