@@ -1795,14 +1795,27 @@ def injection_mode(cfg):
     return (getattr(cfg, "PARTICLES", {}) or {}).get("injection", "central")
 
 
-LIFT_MODELS = {"McLaughlinMei": "McLaughlinMeiLiftForce", "SaffmanMei": "SaffmanMeiLiftForce", "none": None}
+LIFT_MODELS = {"McLaughlinMei": "McLaughlinMeiLiftForce", "SaffmanMei": "SaffmanMeiLiftForce",
+               "Ekanayake": "EkanayakeLiftForce", "none": None}
 
 
 def lift_entry(pp):
-    """particleForces line of the shear lift (PARTICLES['lift']; configs without it keep Saffman-Mei)."""
-    lift = pp.get("lift", "SaffmanMei")
+    """particleForces line of the shear lift (PARTICLES['lift']; default Ekanayake, terminal slip, all walls)."""
+    lift = pp.get("lift", "Ekanayake")
     if lift not in LIFT_MODELS:
         raise SystemExit(f"PARTICLES['lift'] must be one of {list(LIFT_MODELS)}")
+    if lift == "Ekanayake":
+        hindered = "yes" if pp.get("lift_hindered", True) else "no"
+        return (f"\n        {LIFT_MODELS[lift]}"
+                f"\n        {{"
+                f"\n            dMin                {fmt(pp.get('lift_dmin', 1e-6))};   // no lift below [m]"
+                f"\n            hinderedMigration   {hindered};    // wall-normal lift x 6 pi/C_D,perp (Brenner)"
+                f"\n            slip                {pp.get('lift_slip', 'terminal')};   // relative: U_p - U_c, "
+                f"terminal: settling velocity"
+                f"\n            ReMax               {fmt(pp.get('lift_remax', 0.1))};   // Re_slip or Re_gamma above: "
+                f"Takemura et al. (2009) / Shi & Rzehak (2020)"
+                f"\n            // patches: not set = all wall patches"
+                f"\n        }}")
     return f"\n        {LIFT_MODELS[lift]} {{}}" if LIFT_MODELS[lift] else ""
 
 
@@ -2069,7 +2082,8 @@ solution
         muc         cell;
         DUcDt       cellPoint;
         vort        cell;
-        curlUcDt    cellPatchConstrained;   // SaffmanMeiLiftForce
+        curlUcDt    cellPatchConstrained;   // lift forces
+        gradUcDt    cellPatchConstrained;   // EkanayakeLiftForce (wall shear)
         Cp          cell;
         kappa       cell;
         T           cell;

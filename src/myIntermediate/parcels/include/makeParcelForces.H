@@ -39,6 +39,7 @@ License
 
 #include "SaffmanMeiLiftForce.H"
 #include "McLaughlinMeiLiftForce.H"
+#include "EkanayakeLiftForce.H"
 #include "TomiyamaLiftForce.H"
 
 #include "GravityForce.H"
@@ -63,6 +64,7 @@ License
     makeParticleForceModelType(PlessisMasliyahDragForce, CloudType);           \
     makeParticleForceModelType(SaffmanMeiLiftForce, CloudType);                \
     makeParticleForceModelType(McLaughlinMeiLiftForce, CloudType);             \
+    makeParticleForceModelType(EkanayakeLiftForce, CloudType);                 \
     makeParticleForceModelType(TomiyamaLiftForce, CloudType);                  \
     makeParticleForceModelType(GravityForce, CloudType);                       \
     makeParticleForceModelType(NonInertialFrameForce, CloudType);              \

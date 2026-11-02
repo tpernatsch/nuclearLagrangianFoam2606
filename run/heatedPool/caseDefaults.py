@@ -229,8 +229,17 @@ PARTICLES = dict(
     brownian="BrownianMotion",          # stock Li-Ahmadi (exact displacement for dt >> tauP) or "BoundedBrownianMotion" (see README)
     brownian_lambda=1e-12,
     u_integration="analytical",         # exact for frozen forces at any dt/tauP; "CrankNicolson" does not damp for dt >> tauP (README)
-    lift="McLaughlinMei",               # shear lift: "McLaughlinMei" (Saffman x McLaughlin J(eps)/J_inf, Mei's fit; small Re),
-                                        # "SaffmanMei" (Saffman x Mei finite-Re factor; needs eps >> 1) or "none"
+    lift="Ekanayake",                   # shear lift: "Ekanayake" (shear + wall lift at any wall distance, all wall patches,
+                                        # Ekanayake et al. 2021 up to Re_slip, Re_gamma = lift_remax, Takemura et al. 2009
+                                        # above), "McLaughlinMei" (unbounded: Saffman x McLaughlin J(eps)/J_inf, Mei's fit;
+                                        # small Re), "SaffmanMei" (needs eps >> 1) or "none"
+    lift_dmin=1e-6,                     # Ekanayake: no lift below this diameter [m] (keeps Brownian kicks of the
+                                        # sub-micron particles out of the slip)
+    lift_remax=0.1,                     # Ekanayake: Re_slip or Re_gamma (radius-based) above which the Takemura et al.
+                                        # (2009) decomposition with Shi & Rzehak's (2020) correlations is used
+    lift_hindered=True,                 # Ekanayake: wall-normal lift x 6 pi/C_D,perp (hindered drift near walls)
+    lift_slip="terminal",               # Ekanayake: slip = settling velocity ("terminal") or U_p - U_c ("relative",
+                                        # noisy for 10-20 um with dt >> tau_p: U_p lags the new U_c by one step)
     max_co=0.5,
     log_frequency=1000,
     force_magnitudes=True,      # cloud function ForceMagnitudes (needs it registered for nuclear parcels)
