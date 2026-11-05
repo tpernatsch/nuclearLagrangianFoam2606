@@ -240,6 +240,7 @@ PARTICLES = dict(
     lift_hindered=True,                 # Ekanayake: wall-normal lift x 6 pi/C_D,perp (hindered drift near walls)
     lift_slip="terminal",               # Ekanayake: slip = settling velocity ("terminal") or U_p - U_c ("relative",
                                         # noisy for 10-20 um with dt >> tau_p: U_p lags the new U_c by one step)
+    lift_scale=1.0,                     # Ekanayake: multiplier of the whole lift, for sensitivity tests only
     max_co=0.5,
     log_frequency=1000,
     force_magnitudes=True,      # cloud function ForceMagnitudes (needs it registered for nuclear parcels)

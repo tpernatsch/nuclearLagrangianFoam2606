@@ -1806,6 +1806,8 @@ def lift_entry(pp):
         raise SystemExit(f"PARTICLES['lift'] must be one of {list(LIFT_MODELS)}")
     if lift == "Ekanayake":
         hindered = "yes" if pp.get("lift_hindered", True) else "no"
+        scale = pp.get("lift_scale", 1.0)
+        scale_line = "" if scale == 1 else f"\n            scale               {fmt(scale)};   // sensitivity test"
         return (f"\n        {LIFT_MODELS[lift]}"
                 f"\n        {{"
                 f"\n            dMin                {fmt(pp.get('lift_dmin', 1e-6))};   // no lift below [m]"
@@ -1814,6 +1816,7 @@ def lift_entry(pp):
                 f"terminal: settling velocity"
                 f"\n            ReMax               {fmt(pp.get('lift_remax', 0.1))};   // Re_slip or Re_gamma above: "
                 f"Takemura et al. (2009) / Shi & Rzehak (2020)"
+                f"{scale_line}"
                 f"\n            // patches: not set = all wall patches"
                 f"\n        }}")
     return f"\n        {LIFT_MODELS[lift]} {{}}" if LIFT_MODELS[lift] else ""

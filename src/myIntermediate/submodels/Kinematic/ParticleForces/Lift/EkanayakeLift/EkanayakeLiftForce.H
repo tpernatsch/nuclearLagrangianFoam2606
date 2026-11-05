@@ -130,6 +130,10 @@ Description
     nearest one is used); slip parallel to the wall. Parcels smaller than
     dMin get no lift (also keeps Brownian kicks out of the slip).
 
+    scale: multiplies the whole force, shear and wall parts (default 1). It
+    has no physical meaning: it is for testing the sensitivity of a result
+    to the uncertainty of the lift.
+
     References:
         Ekanayake, N.I.K., Berry, J.D., Harvie, D.J.E. (2021). Lift and drag
         forces acting on a particle moving in the presence of slip and shear
@@ -157,6 +161,7 @@ Usage
             hinderedMigration   yes;        // default yes
             slip                terminal;   // relative (default) | terminal
             ReMax               0.1;        // above: Takemura et al. (2009)
+            scale               1;          // default 1, sensitivity tests
             patches             (innerWall outerWall bottom); // default: walls
         }
     }
@@ -204,6 +209,9 @@ class EkanayakeLiftForce
         //- Re_slip or Re_gamma above which the Takemura et al. (2009)
         //  decomposition replaces the Ekanayake correlation
         const scalar ReMax_;
+
+        //- Multiplier of the whole force (sensitivity tests, default 1)
+        const scalar scale_;
 
         //- Wall patches (empty: all wall patches)
         const wordRes patches_;

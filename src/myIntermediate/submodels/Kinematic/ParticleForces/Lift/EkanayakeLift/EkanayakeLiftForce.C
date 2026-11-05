@@ -118,6 +118,7 @@ void Foam::EkanayakeLiftForce<CloudType>::setWallData()
         << ", dMin " << dMin_
         << ", hinderedMigration " << hinderedMigration_
         << ", ReMax " << ReMax_
+        << ", scale " << scale_
         << ", slip " << (terminalSlip_ ? "terminal" : "relative") << endl;
 }
 
@@ -221,6 +222,7 @@ Foam::EkanayakeLiftForce<CloudType>::EkanayakeLiftForce
         this->coeffs().template getOrDefault<bool>("hinderedMigration", true)
     ),
     ReMax_(this->coeffs().template getOrDefault<scalar>("ReMax", 0.1)),
+    scale_(this->coeffs().template getOrDefault<scalar>("scale", 1)),
     patches_
     (
         this->coeffs().template getOrDefault<wordRes>("patches", wordRes())
@@ -261,6 +263,7 @@ Foam::EkanayakeLiftForce<CloudType>::EkanayakeLiftForce
     dMin_(lf.dMin_),
     hinderedMigration_(lf.hinderedMigration_),
     ReMax_(lf.ReMax_),
+    scale_(lf.scale_),
     patches_(lf.patches_),
     terminalSlip_(lf.terminalSlip_),
     nWall_(lf.nWall_),
@@ -484,6 +487,8 @@ Foam::forceSuSp Foam::EkanayakeLiftForce<CloudType>::calcCoupled
 
         F += (hPerp - 1.0)*(F & n)*n;
     }
+
+    F *= scale_;
 
     if (debug)
     {
