@@ -123,7 +123,9 @@ void Foam::NuclearParcel<ParcelType>::calcSurfaceValues
     }
 
     // For incompressible: all properties are constant
-    rhos = cloud.constProps().rho0();
+    // rhos is the CARRIER density: it goes into Re(rhoc, ...) for drag.
+    // constProps().rho0() is the particle density, do not use it here.
+    rhos = td.rhoc();
     mus = cloud.constProps().mu0();
     kappas = cloud.constProps().kappa0();
     Pr = mus * cloud.constProps().Cp0() / kappas;
