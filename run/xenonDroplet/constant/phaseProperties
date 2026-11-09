@@ -92,6 +92,11 @@ massTransferModel
         correctDropArea true;         // spread each drop area over its flux cells
         slipVelocity    shell;        // drop velocity minus gas velocity in a shell
         slipShell       (1.5 3);      // shell radii / drop radius
+
+        // ---------------- Contact age (contactAge.liquid, s) ----------------
+        contactAge      true;         // time spent as a drop in contact with helium
+        ageAlphaCut     1e-3;
+        surfaceRenewal  none;         // stretching: fresh area resets age (parasitic currents!)
     }//*/
 );
 

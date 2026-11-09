@@ -18,6 +18,7 @@
 #include "DynamicList.H"
 #include "volPointInterpolation.H"
 #include "fvcVolumeIntegrate.H"
+#include "fvcGrad.H"
 #include "surfaceFields.H"
 #include "uniformDimensionedFields.H"
 
@@ -146,6 +147,12 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>
     slipVelocityMode_(dict.getOrDefault<word>("slipVelocity", "interface")),
     slipShellInner_(1.5),
     slipShellOuter_(3.0),
+
+    contactAge_(dict.getOrDefault<bool>("contactAge", false)),
+    ageAlphaCut_(dict.getOrDefault<scalar>("ageAlphaCut", 1e-3)),
+    surfaceRenewal_(dict.getOrDefault<word>("surfaceRenewal", "none")),
+    ageTimeIndex_(-1),
+    contactAgePtr_(nullptr),
 
     // Henry/partition equilibrium:
     k_(dict.get<scalar>("k")),
@@ -421,6 +428,47 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>
         FatalIOErrorInFunction(dict)
             << "dpMode fixed requires a positive dp."
             << exit(FatalIOError);
+    }
+
+    if (surfaceRenewal_ != "none" && surfaceRenewal_ != "stretching")
+    {
+        FatalIOErrorInFunction(dict)
+            << "Unsupported surfaceRenewal '" << surfaceRenewal_
+            << "'. Valid choices are none | stretching"
+            << exit(FatalIOError);
+    }
+
+    if (contactAge_)
+    {
+        IOobject io
+        (
+            IOobject::groupName("contactAge", dispersedPhaseName_),
+            this->mesh_.time().timeName(),
+            this->mesh_,
+            IOobject::MUST_READ,
+            IOobject::AUTO_WRITE
+        );
+
+        // Read for restarts or user boundary conditions (e.g. mapped re-entry);
+        // otherwise start from zero with calculated (zero-inflow) patches
+        if (io.typeHeaderOk<volScalarField>(true))
+        {
+            contactAgePtr_.reset(new volScalarField(io, this->mesh_));
+        }
+        else
+        {
+            io.readOpt(IOobject::NO_READ);
+
+            contactAgePtr_.reset
+            (
+                new volScalarField
+                (
+                    io,
+                    this->mesh_,
+                    dimensionedScalar(dimTime, Zero)
+                )
+            );
+        }
     }
 }
 
@@ -1551,6 +1599,158 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
         }
     }
 
+    // Contact age: d(alpha*theta)/dt + div(alphaPhi*theta) = alpha*chi - alpha*theta*s
+    scalarList dropAge(nDrops, 0.0);
+    scalarList dropRenewal(nDrops, 0.0);
+
+    if (contactAgePtr_)
+    {
+        volScalarField& age = *contactAgePtr_;
+        const scalarField& V = mesh.V();
+
+        if (surfaceRenewal_ == "stretching")
+        {
+            // Material-surface stretching: dA/dt = int div_s(U) dA,
+            // div_s(U) = tr(grad U) - n.(grad U).n
+            const tmp<volTensorField> tgradU(fvc::grad(Udisp));
+            const tmp<volVectorField> tgradA(fvc::grad(alphaDisp));
+            const volTensorField& gradU = tgradU();
+            const volVectorField& gradA = tgradA();
+
+            scalarList stretchInt(nDrops, 0.0);
+
+            forAll(dropId, celli)
+            {
+                const label j = dropId[celli];
+                if (j < 0 || interfaceArea_[celli] <= SMALL) continue;
+
+                const scalar magG = mag(gradA[celli]);
+                if (magG <= SMALL) continue;
+
+                const vector n(gradA[celli]/magG);
+                const tensor& G = gradU[celli];
+
+                stretchInt[j] +=
+                    interfaceArea_[celli]*V[celli]*(tr(G) - (n & G & n));
+            }
+
+            for (label j = 0; j < nDrops; ++j)
+            {
+                reduce(stretchInt[j], sumOp<scalar>());
+
+                if (dropA[j] > SMALL)
+                {
+                    dropRenewal[j] = max(stretchInt[j]/dropA[j], scalar(0));
+                }
+            }
+        }
+
+        // Once per time step
+        if (ageTimeIndex_ != mesh.time().timeIndex())
+        {
+            ageTimeIndex_ = mesh.time().timeIndex();
+
+            const scalar dt = mesh.time().deltaTValue();
+
+            const auto& dispPhase =
+                dispersedIsFrom ? this->pair().from() : this->pair().to();
+
+            const tmp<surfaceScalarField> tAlphaPhi(dispPhase.alphaPhi());
+            const surfaceScalarField& alphaPhiD = tAlphaPhi();
+
+            const volScalarField& alphaOld = startAlpha(alphaDisp);
+
+            age.correctBoundaryConditions();
+
+            // Explicit upwind with the bounded MULES phase flux: theta is a
+            // convex combination of old cell and upwind values
+            scalarField Z(max(alphaOld.primitiveField(), scalar(0))*age.primitiveField());
+
+            const labelUList& own = mesh.owner();
+            const labelUList& nei = mesh.neighbour();
+
+            forAll(own, facei)
+            {
+                const scalar F = alphaPhiD[facei];
+                const scalar th = (F >= 0) ? age[own[facei]] : age[nei[facei]];
+
+                Z[own[facei]] -= dt*F*th/V[own[facei]];
+                Z[nei[facei]] += dt*F*th/V[nei[facei]];
+            }
+
+            forAll(mesh.boundary(), patchi)
+            {
+                const fvsPatchScalarField& pF = alphaPhiD.boundaryField()[patchi];
+                const fvPatchScalarField& pAge = age.boundaryField()[patchi];
+                const labelUList& fc = mesh.boundary()[patchi].faceCells();
+
+                // Inflow takes the patch value (neighbour value on coupled patches)
+                const scalarField inflowAge
+                (
+                    pAge.coupled()
+                  ? pAge.patchNeighbourField()()
+                  : static_cast<const scalarField&>(pAge)
+                );
+
+                forAll(pF, facei)
+                {
+                    const scalar F = pF[facei];
+                    const scalar th = (F >= 0) ? age[fc[facei]] : inflowAge[facei];
+
+                    Z[fc[facei]] -= dt*F*th/V[fc[facei]];
+                }
+            }
+
+            scalarField& ageI = age.primitiveFieldRef();
+
+            forAll(ageI, celli)
+            {
+                const scalar a = alphaDisp[celli];
+
+                if (a <= ageAlphaCut_)
+                {
+                    ageI[celli] = 0;
+                    continue;
+                }
+
+                scalar th = Z[celli]/a;
+
+                const label j = dropId[celli];
+
+                if (j >= 0)
+                {
+                    th = (th + dt)/(1 + dt*dropRenewal[j]);
+                }
+
+                ageI[celli] = max(th, scalar(0));
+            }
+
+            age.correctBoundaryConditions();
+        }
+
+        // Mass-weighted drop age (one phase density, so alpha*V weighting)
+        scalarList dropAgeW(nDrops, 0.0);
+
+        forAll(dropId, celli)
+        {
+            const label j = dropId[celli];
+            if (j < 0) continue;
+
+            const scalar w = max(alphaDisp[celli], scalar(0))*V[celli];
+
+            dropAge[j] += w*age[celli];
+            dropAgeW[j] += w;
+        }
+
+        for (label j = 0; j < nDrops; ++j)
+        {
+            reduce(dropAge[j], sumOp<scalar>());
+            reduce(dropAgeW[j], sumOp<scalar>());
+
+            dropAge[j] /= max(dropAgeW[j], VSMALL);
+        }
+    }
+
     // 4) Global fallback geometry + assemble mDotc
     scalar dpGeomGlobal = max(dp_, SMALL);
 
@@ -2011,6 +2211,13 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
                 << " Re=" << dropRe[j]
                 << " Atarget=" << dropAreaTarget[j]
                 << " areaScale=" << dropAreaScale[j];
+
+            if (contactAgePtr_)
+            {
+                Info<< " age=" << dropAge[j]
+                    << " FoAge=" << 4*Dliq_*dropAge[j]/sqr(max(dropDp[j], SMALL))
+                    << " renewal=" << dropRenewal[j];
+            }
 
             if (computeInternalCirculation)
             {

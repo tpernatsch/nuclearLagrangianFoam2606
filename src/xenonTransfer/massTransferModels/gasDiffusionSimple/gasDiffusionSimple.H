@@ -50,7 +50,19 @@
     correctDropArea         false;         // spread each drop's area over its flux cells
     slipVelocity            interface;     // interface | shell
     slipShell               (1.5 3);       // shell radii / drop radius (slipVelocity shell)
+
+    contactAge              false;         // transport contactAge.<dispersedPhase> [s]
+    ageAlphaCut             1e-3;          // no age below this dispersed-phase fraction
+    surfaceRenewal          none;          // none | stretching
 }
+
+Contact age theta: time the dispersed phase has spent in drops (clusters
+with interface), transported conservatively as alpha*theta with the phase
+flux, so it follows drops through series, breakup and mapped re-entry:
+    d(alpha*theta)/dt + div(alphaPhi*theta) = alpha*chi_drop - alpha*theta*s
+s (surfaceRenewal stretching) is the per-drop interface stretching rate
+max(0, int(div_s U) dA / A): new interface is fresh, so the mean surface age
+drops. Inflow takes the patch value of theta (0 unless set, e.g. mapped).
 */
 
 #ifndef Foam_meltingEvaporationModels_gasDiffusionSimple_H
@@ -119,6 +131,13 @@ class gasDiffusionSimple
     word slipVelocityMode_;
     scalar slipShellInner_;
     scalar slipShellOuter_;
+
+    // Contact age of the dispersed phase
+    bool contactAge_;
+    scalar ageAlphaCut_;
+    word surfaceRenewal_;
+    label ageTimeIndex_;
+    autoPtr<volScalarField> contactAgePtr_;
 
     // Dimensionless Henry/partition ratio:
         scalar k_;
