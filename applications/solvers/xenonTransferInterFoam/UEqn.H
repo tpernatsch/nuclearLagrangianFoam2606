@@ -2,7 +2,7 @@ fvVectorMatrix UEqn
 (
     fvm::ddt(rho, U)
   + fvm::div(rhoPhi, U)
-  - fvm::Sp(fvc::ddt(rho) + fvc::div(rhoPhi), U)
+//- fvm::Sp(fvc::ddt(rho) + fvc::div(rhoPhi), U)  // as stock; no effect on xenonDroplet (A/B < 3e-5)
   + turbulence->divDevRhoReff(U)
   ==
     fvOptions(rho, U)
