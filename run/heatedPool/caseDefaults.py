@@ -218,7 +218,7 @@ CLUSTER = dict(enabled=False, ntasks=64, account="eu", extra=[])
 #   particle       : constantProperties (mu0 = salt mu(TRef) unless given)
 PARTICLES = dict(
     enabled=True,
-    diameters=[1e-9, 2e-9, 5e-9, 1e-8, 2e-8, 1e-7, 1e-6, 1e-5, 2e-5, 5e-5, 1e-4],   # [m]
+    diameters=[1e-9, 2e-9, 5e-9, 1e-8, 2e-8, 1e-7, 1e-6, 1e-5, 2e-5],   # [m]; nothing above 20 um (50/100 um were exploratory)
     n_per_injection=20000,
     SOI=1.0,                                    # [s]
     release_duration=2.0,                       # [s] positions released one by one over this time (0 = all at SOI)
@@ -241,6 +241,7 @@ PARTICLES = dict(
     lift_slip="terminal",               # Ekanayake: slip = settling velocity ("terminal") or U_p - U_c ("relative",
                                         # noisy for 10-20 um with dt >> tau_p: U_p lags the new U_c by one step)
     lift_scale=1.0,                     # Ekanayake: multiplier of the whole lift, for sensitivity tests only
+    carrier_mu_T=True,                  # parcels feel the flow's mu(T); False: uniform mu(TRef), as old cases
     max_co=0.5,
     log_frequency=1000,
     force_magnitudes=True,      # cloud function ForceMagnitudes (needs it registered for nuclear parcels)

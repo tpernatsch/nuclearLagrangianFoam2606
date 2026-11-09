@@ -4,6 +4,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "nuclearCloudSourceSingle.H"
+#include "incompressible/lnInclude/transportModel.H"
 #include "fvcCurl.H"
 #include "gravityMeshObject.H"
 #include "addToRunTimeSelectionTable.H"
@@ -45,6 +46,7 @@ Foam::fv::nuclearCloudSourceSingle::nuclearCloudSourceSingle
         dimDynamicViscosity,
         coeffs_.get<scalar>("rho")*coeffs_.get<scalar>("nu")
     ),
+    muFromTransport_(coeffs_.getOrDefault<bool>("muFromTransport", false)),
     rhoc_
     (
         IOobject
@@ -111,6 +113,13 @@ void Foam::fv::nuclearCloudSourceSingle::correct(volVectorField& U)
         return;
     }
     lastTimeIndex_ = mesh_.time().timeIndex();
+
+    if (muFromTransport_)
+    {
+        // The solver's transport model, so that the parcels and the flow
+        // see the same viscosity law
+        muc_ = rhoc_*mesh_.lookupObject<transportModel>("transportProperties").nu();
+    }
 
     cloud_->storeGlobalPositions();
     cloud_->evolve();

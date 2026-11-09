@@ -377,7 +377,7 @@ cloud exists only in the PIMPLE stage.
 | particle | ρ 10980, T0 883 K, cp 296, κ 115, μ0 = salt μ(T_ref) |
 | carrier | ρ and ν constant at T_ref (the fvOption takes constants: the drag does not follow the Arrhenius μ(T), ±20 % over the salt) |
 | walls | multiInteraction: localInteraction (`stick` on every wall and on the free surface, `outputByInjectorId`, `writeToFile`) + stickReplaceInteraction: each stuck parcel is replaced by a new one (own ID, age 0) at a random point of the cellZone `liquid`, its hit (time, position, age, origProc, origId) is written to `postProcessing/lagrangian/FPCloud/patchInteractionModel/<startTime>/stickHits_<patch>_<typeId>.dat` at the write times, and the stuck parcel is deleted (`deleteStuck`, `writeHits`): the cloud stays at the injected size |
-| cloud functions | `forceMagnitudes` (switch `force_magnitudes`; recomputes drag/gravity/Saffman-Mei lift with the constant carrier properties, not the forces applied), `patchInteractionFields` (cumulative deposition per face); `particlePostProcessing` (one record per hit) only when the walls are not `stick` |
+| cloud functions | `forceMagnitudes` (switch `force_magnitudes`; recomputes drag/gravity/Saffman-Mei lift with constant carrier density and the local carrier viscosity, not the forces applied), `patchInteractionFields` (cumulative deposition per face); `particlePostProcessing` (one record per hit) only when the walls are not `stick` |
 
 **Wedges.** The nuclear parcels keep a velocity component across the wedge, from the Brownian kicks and the
 lift (the 1 µm parcels of the smoke test reached U_y ≈ 4 mm/s and spread over the whole wedge angle), so they

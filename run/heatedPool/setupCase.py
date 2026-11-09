@@ -1886,6 +1886,7 @@ def cloud_fvoption(cfg, d):
         cloudName       {CLOUD};
         rho             {fmt(cfg.RHO)};      // [kg/m3]
         nu              {d['nu']:.6g};      // mu(TRef)/rho [m2/s]
+        muFromTransport {'yes' if cfg.PARTICLES.get('carrier_mu_T', False) else 'no'};      // yes: mu = rho nu(T) of the flow, every step
     }}
 }}
 """
@@ -2079,7 +2080,7 @@ solution
     interpolationSchemes
     {{
         "{CLOUD}:rho" cell;       // carrier rho/mu fields owned by the fvOption
-        "{CLOUD}:mu"  cell;
+        "{CLOUD}:mu"  {'cellPoint' if pp.get('carrier_mu_T', False) else 'cell'};
         rho         cell;
         U           cellPointWallModified;
         muc         cell;
@@ -2117,7 +2118,7 @@ constantProperties
     T0              {fmt(prop['T0'])};
     Cp0             {fmt(prop['Cp0'])};
     kappa0          {fmt(prop['kappa0'])};
-    mu0             {prop['mu0']:.6g};      // salt mu(TRef)
+    mu0             {prop['mu0']:.6g};      // not used: parcels take the carrier mu of the fvOption
 }}
 
 subModels

@@ -44,6 +44,8 @@ Description
             cloudName       FPCloud;  // optional, defaults to <name>Cloud
             rho             1.2;      // carrier density [kg/m3]
             nu              1.5e-05;  // carrier kinematic viscosity [m2/s]
+            muFromTransport yes;      // mu = rho nu(T) of the flow, every
+                                      // step (default no: uniform rho nu)
         }
     }
     \endverbatim
@@ -84,6 +86,9 @@ class nuclearCloudSourceSingle
 
         //- Uniform carrier dynamic viscosity (= rho0_ * nu)
         dimensionedScalar mu0_;
+
+        //- Update muc_ from the flow's transport model before every evolve
+        bool muFromTransport_;
 
         //- Persistent carrier density field (see class doc - required by
         //  the cloud constructor's type, not to dodge a dangling tmp<>)
