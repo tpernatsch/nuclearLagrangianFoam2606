@@ -20,7 +20,7 @@ thermoType
     mixture         multiComponentMixture;
     transport       const;
     thermo          hConst;
-    equationOfState rhoConst;//incompressiblePerfectGas;
+    equationOfState incompressiblePerfectGas; // rho = pRef*W/(R*T), 0.00261 kg/m3 for He at 920 K
     specie          specie;
     energy          sensibleEnthalpy;
 }
@@ -45,9 +45,7 @@ helium
     }
     equationOfState
     {
-        //pRef         5000;
-        rho          0.0069;
-            
+        pRef         5000;
     }
     thermodynamics
     {
@@ -70,8 +68,7 @@ xenon
     }
     equationOfState
     {
-        //pRef         5000;
-        rho          0.0069;
+        pRef         5000;
     }
     thermodynamics
     {
