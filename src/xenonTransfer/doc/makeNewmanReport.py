@@ -34,6 +34,7 @@ rho_g = p*M_He/(R_u*T)  # helium density [kg/m3]
 mu_g = 4.6913e-5       # helium viscosity [Pa s]
 k_H = 2.08e-4          # dimensionless Henry (c_l/c_g at equilibrium)
 D_g_thesis = 1.0e-5    # value used in the thesis case [m2/s]
+D_SE = 1.380649e-23*920.0/(6*math.pi*6.068e-3*2.2e-10)  # Stokes-Einstein estimate for Xe in salt
 g = 9.81
 Y0 = 4.0e-5            # initial Xe mass fraction in the drop
 
@@ -48,6 +49,13 @@ MEAS = dict(
     Urel_iface=1.65e-3, Uslip_shell=7.9e-3, Ufall=1.56e-3, Umax=0.36,
 )
 THESIS = dict(t_end=0.0115, removed_Sh2=0.22, beta_fit_Sh2=0.191)
+STRETCH_NOTE = (
+    " With <code>surfaceRenewal stretching</code> the same run reports a drop renewal rate of 264 s<sup>&minus;1</sup> on average "
+    "(peaks of 670 s<sup>&minus;1</sup>) although the area of the near-rigid falling sphere is constant (true rate &asymp; 0): the "
+    "parasitic currents stretch the interface numerically. The age already lags t by 4 % after 0.3 ms and would saturate at "
+    "&theta; &asymp; 1/s &asymp; 4 ms, capping Fo. Renewal therefore stays off (default) until the parasitic currents are reduced; "
+    "V6 must be repeated then."
+)
 
 # ---------------------------------------------------------------- Newman solution
 PI = math.pi
@@ -331,8 +339,8 @@ eq("Shpen", r"Sh_\ell\simeq\frac{2}{\sqrt{\pi\,Fo}}\ \ \Leftrightarrow\ \ k_\ell
 eq("delta", r"\delta(t)\approx\sqrt{\pi D_\ell t}")
 eq("kb", r"Sh_\infty^{KB}\approx 17.9,\qquad Pe_{int}=\frac{U\,d}{2(1+\kappa)\,D_\ell},\quad \kappa=\mu_\ell/\mu_g")
 eq("fall", r"\frac{dv}{dt}=g\left(1-\frac{\rho_g}{\rho_\ell}\right)-\frac{v\,(1+0.15\,Re^{0.687})}{\tau_p},\qquad \tau_p=\frac{\rho_\ell d^2}{18\,\mu_g}\,C_c")
-eq("age", r"\frac{\partial(\alpha_\ell\,\theta)}{\partial t}+\nabla\cdot(\alpha_\ell\,\phi\,\theta)=\alpha_\ell\,\chi_{drop}")
-eq("renew", r"\theta_j^{n+1}=\left(\theta_j^{n}+\Delta t\right)\,\min\left(1,\frac{A_j^{n}}{A_j^{n+1}}\right)")
+eq("age", r"\frac{\partial(\alpha_\ell\,\theta)}{\partial t}+\nabla\cdot(\alpha_\ell\,\phi\,\theta)=\alpha_\ell\,\chi_{drop}-\alpha_\ell\,\theta\,s_j")
+eq("renew", r"s_j=\max\left(0,\ \frac{1}{A_j}\int_{A_j}\left[\mathrm{tr}(\nabla\mathbf{u})-\mathbf{n}\cdot\nabla\mathbf{u}\cdot\mathbf{n}\right]dA\right)")
 eq("flux", r"\dot M_j=k_\ell(Fo_j)\,A_j\,\rho_\ell\,\left(\bar Y_{\ell,j}-\bar Y_{eq,j}\right),\qquad Fo_j=\frac{4D_\ell\,\theta_j}{d_j^2}")
 
 
@@ -357,7 +365,7 @@ def table(head, rows, cls=""):
 
 paramRows = [
     ("Drop diameter d", "0.30 mm", "thesis"),
-    ("Xe diffusivity in salt D<sub>&#8467;</sub>", f"{f(D_l)} m&sup2;/s", "thesis value, source to be checked"),
+    ("Diffusivity of Xe in the salt D<sub>&#8467;</sub>", f"{f(D_l)} m&sup2;/s", f"thesis value, source unknown; Stokes&ndash;Einstein kT/(6&pi;&mu;r), r = 2.2 &Aring;: {f(D_SE)}"),
     ("Salt density / viscosity", f"{rho_l:.0f} kg/m&sup3; / {mu_l*1e3:.2f} mPa&middot;s", "thesis"),
     ("He density at 920 K, 5 kPa", f"{f(rho_g)} kg/m&sup3;", "ideal gas"),
     ("He viscosity", f"{f(mu_g)} Pa&middot;s", "thesis"),
@@ -550,8 +558,10 @@ does not depend on the shape.</li>
 affects the drag (Cunningham factor {cunningham(d0):.3f}), not the liquid side.</li>
 </ul>
 
-<h2>3. Implementation plan (not yet implemented)</h2>
-<h3>3.1 Closure</h3>
+<h2>3. Implementation</h2>
+<p>Status: the contact age &theta; (section 3.2) is implemented (<code>contactAge</code>, <code>surfaceRenewal</code>); the Newman closure
+(section 3.1) is not yet implemented and is the next step.</p>
+<h3>3.1 Closure (planned)</h3>
 <p>New option <code>liquidSherwoodModel Newman;</code> in <code>gasDiffusionSimple</code>. For each drop j:</p>
 {EQ['flux']}
 <p>where &theta;<sub>j</sub> is the contact time of drop j, A<sub>j</sub> its transfer area (already available:
@@ -565,12 +575,17 @@ concentration and makes the CFD drop reproduce the Newman curve exactly in the l
 <h3>3.2 Contact time for single drops, series, re-entry and splashing</h3>
 <p>The target applications (a series of droplets, the same droplet re-entering the domain after leaving it, splashing on an inclined
 plate) rule out a global clock and make Lagrangian drop-identity tracking fragile (drops merge, split, leave and re-enter, and identities
-are not preserved by the region-split clustering between steps or across processors). The proposal is an Eulerian <b>contact-age</b> field
-&theta; carried by the liquid, transported with the same conservative Z = &alpha;&theta; machinery as xenon (mass-consistent with &alpha;):</p>
+are not preserved by the region-split clustering between steps or across processors). The implemented solution is an Eulerian
+<b>contact-age</b> field &theta; (<code>contactAge.&lt;dispersedPhase&gt;</code>, seconds) carried by the dispersed liquid and transported
+conservatively as &alpha;&theta; with the same bounded MULES phase flux &alpha;&phi; that moves &alpha; itself:</p>
 {EQ['age']}
-<p>with &chi;<sub>drop</sub> = 1 in cells belonging to an identified drop (or film fragment) in contact with helium and 0 in the feed/injector
-liquid. This is the &ldquo;local mean age&rdquo; concept of residence-time distributions [8, 9]. The drop value is the mass-weighted mean
-&theta;<sub>j</sub>. Behaviour in the target cases:</p>
+<p>with &chi;<sub>drop</sub> = 1 in cells belonging to an identified drop (a cluster with interface, the same clustering used for the transfer)
+and s<sub>j</sub> the renewal rate of drop j (below). This is the &ldquo;local mean age&rdquo; concept of residence-time distributions [8, 9].
+Discretisation: explicit first-order upwind with the phase flux, from the start-of-step &alpha;, so that &theta; is a convex combination of the
+old cell and upwind values (bounded, no spurious ageing where liquid arrives); the source and renewal are applied as
+&theta;<sup>n+1</sup> = (&theta;* + &Delta;t)/(1 + &Delta;t s<sub>j</sub>). Inflow faces take the patch value (zero by default, or a user boundary
+condition such as a mapped inlet); cells with &alpha; &le; <code>ageAlphaCut</code> carry no age. The drop value &theta;<sub>j</sub> is the
+mass-weighted mean, printed with Fo<sub>j</sub> = 4D<sub>&#8467;</sub>&theta;<sub>j</sub>/d<sub>j</sub>&sup2;. Behaviour in the target cases:</p>
 <ul>
 <li><b>Series of drops:</b> each drop starts with &theta; = 0 at the injector and accumulates its own age; no identity bookkeeping.</li>
 <li><b>Re-entry:</b> if the outlet is mapped back to the inlet, both Z<sub>Xe</sub> and Z<sub>&theta;</sub> are carried, so the drop resumes
@@ -578,9 +593,12 @@ with its own depletion history (F continuous across the boundary).</li>
 <li><b>Breakup:</b> fragments inherit the parent age (exact to leading order in the penetration regime, where the depleted layer stays on
 the surface).</li>
 <li><b>Coalescence:</b> mass-weighted mean age; this is an approximation because k<sub>&#8467;</sub>(&theta;) is non-linear (state it as such).</li>
-<li><b>Splashing / film formation:</b> new interface exposes undepleted liquid (surface renewal, Danckwerts [4]). Proposed per-drop renewal
-when the drop area grows: {EQ['renew']}
-i.e. the newly created area is assigned zero age and mixed by area with the old surface. On the plate the sphere geometry is lost; the
+<li><b>Splashing / film formation:</b> new interface exposes undepleted liquid (surface renewal, Danckwerts [4]; penetration theory with
+surface stretch, Angelo et al. [20]). If new area is created with zero age and mixed by area with the existing surface, the mean surface age obeys
+dθ/dt = 1 &minus; θ s with s = (1/A) dA/dt. For a material interface dA/dt follows from the surface divergence of the velocity, so no drop
+identity between steps is needed (<code>surfaceRenewal stretching</code>): {EQ['renew']}
+Contraction (s &lt; 0) does not rejuvenate the surface. Because the parasitic currents (section 5) also stretch the interface, this option
+must be checked on a static drop before use. On the plate the sphere geometry is lost; the
 penetration form k<sub>&#8467;</sub> = (D<sub>&#8467;</sub>/&pi;&theta;)<sup>&frac12;</sup> remains valid while the depleted depth
 &delta; = (&pi;D<sub>&#8467;</sub>&theta;)<sup>&frac12;</sup> is small compared with the film thickness; beyond that a film model is needed.
 This renewal rule is a modelling hypothesis and must be validated, not only verified.</li>
@@ -613,6 +631,9 @@ physics (e.g. internal circulation, section 2.4).</p>
     ("V6", "Prescribed stretching of a drop (kinematic test)", "area-renewal rule", "&theta;<sub>j</sub> follows the renewal rule exactly"),
 ])}
 <p style="font-size:8.6pt;color:#52514e">Table 6. Verification tests, in the order they should be run.</p>
+<p>Already checked (single drop, part of V4): over the first 0.3 ms of <code>run/xenonDroplet</code> the mass-weighted drop age equals the
+elapsed time exactly for the first steps and to within 0.4 % once the interface smears (thin liquid in smeared cells outside the drop
+cluster does not age); max(&theta;) equals t to round-off and min(&theta;) = 0, i.e. the transport is bounded.{STRETCH_NOTE}</p>
 <p>V2 is the central test: with g = 0 the Newman solution is exact for the CFD set-up, so any discrepancy is an implementation or
 geometry error. Before the Newman model, the same test with a fixed Sh already checks the geometry chain (section 5).</p>
 
@@ -673,6 +694,7 @@ reference and bracketed with Kronig&ndash;Brink once the circulation diagnostics
 <li>G. M. Watson, R. B. Evans, W. R. Grimes, N. V. Smith, Solubility of noble gases in molten fluorides. In lithium-beryllium fluoride, J. Chem. Eng. Data 7 (1962) 285&ndash;287.</li>
 <li>R. J. Kedl, A. Houtzeel, Development of a model for computing <sup>135</sup>Xe migration in the MSRE, ORNL-4069, 1967.</li>
 <li>E. F. Tiso, Numerical analysis of ex-core xenon removal from molten salt reactor fuel with a multicomponent volume-of-fluid solver, MSc thesis, Politecnico di Milano, 2026.</li>
+<li>J. B. Angelo, E. N. Lightfoot, D. W. Howard, Generalization of the penetration theory for surface stretch: application to forming and oscillating drops, AIChE J. 12 (1966) 751&ndash;760.</li>
 </ol>
 </body></html>"""
 
