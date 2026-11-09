@@ -97,7 +97,11 @@ void Foam::ForceMagnitudes<CloudType>::postEvolve
         )
     );
 
-    const scalar muc = rhoc_*nuc_;
+    autoPtr<interpolation<scalar>> mucInterp
+    (
+        interpolation<scalar>::New(c.solution().interpolationSchemes(), c.mu())
+    );
+
     const vector g = c.g().value();
 
     auto initField = [&](const word& name) -> IOField<scalar>&
@@ -149,7 +153,11 @@ void Foam::ForceMagnitudes<CloudType>::postEvolve
         const scalar rhop = p.rho();
         const scalar mass = p.mass();
 
-        const scalar Re = mag(Urel)*d/nuc_;
+        // Local carrier viscosity, the one the parcel feels
+        const scalar muc =
+            mucInterp().interpolate(p.coordinates(), p.currentTetIndices());
+
+        const scalar Re = rhoc_*mag(Urel)*d/muc;
 
         // Drag - Foam::SphereDragForce (AOB:Eq. 34/35)
         {

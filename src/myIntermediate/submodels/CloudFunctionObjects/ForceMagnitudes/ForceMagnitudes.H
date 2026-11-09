@@ -64,11 +64,9 @@ Usage
     \endtable
 
     Note
-      This model assumes a constant carrier density and viscosity
-      (as supplied via rhoc/nuc), consistent with the Newtonian,
-      constant-property transportModel used in this case. If the carrier
-      properties vary in space/time in your case, replace the rhoc_/nuc_
-      scalars with field lookups accordingly.
+      This model assumes a constant carrier density (rhoc). The carrier
+      viscosity is the cloud's own field at the parcel, as in the applied
+      forces; the entry nuc is still required but no longer used.
 
 See also
   - Foam::SphereDragForce
