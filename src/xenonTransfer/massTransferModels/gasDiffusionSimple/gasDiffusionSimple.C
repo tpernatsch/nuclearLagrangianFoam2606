@@ -141,6 +141,12 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>
     dp_(dict.getOrDefault<scalar>("dp", 0.0)),
     dpMode_(dict.getOrDefault<word>("dpMode", "fixed")),
 
+    dropAreaMode_(dict.getOrDefault<word>("dropArea", "iso")),
+    correctDropArea_(dict.getOrDefault<bool>("correctDropArea", false)),
+    slipVelocityMode_(dict.getOrDefault<word>("slipVelocity", "interface")),
+    slipShellInner_(1.5),
+    slipShellOuter_(3.0),
+
     // Henry/partition equilibrium:
     k_(dict.get<scalar>("k")),
 
@@ -319,10 +325,45 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>
             << exit(FatalIOError);
     }
 
-    if (dpMode_ != "fixed" && dpMode_ != "globalVA" && dpMode_ != "perDropVA")
+    if
+    (
+        dpMode_ != "fixed" && dpMode_ != "globalVA"
+     && dpMode_ != "perDropVA" && dpMode_ != "perDropVol"
+    )
     {
         FatalIOErrorInFunction(dict)
-            << "Unsupported dpMode '" << dpMode_ << "'. Valid choices are fixed | globalVA | perDropVA"
+            << "Unsupported dpMode '" << dpMode_
+            << "'. Valid choices are fixed | globalVA | perDropVA | perDropVol"
+            << exit(FatalIOError);
+    }
+
+    if (dropAreaMode_ != "iso" && dropAreaMode_ != "volumeSphere")
+    {
+        FatalIOErrorInFunction(dict)
+            << "Unsupported dropArea '" << dropAreaMode_
+            << "'. Valid choices are iso | volumeSphere"
+            << exit(FatalIOError);
+    }
+
+    if (slipVelocityMode_ != "interface" && slipVelocityMode_ != "shell")
+    {
+        FatalIOErrorInFunction(dict)
+            << "Unsupported slipVelocity '" << slipVelocityMode_
+            << "'. Valid choices are interface | shell"
+            << exit(FatalIOError);
+    }
+
+    if (dict.found("slipShell"))
+    {
+        const Pair<scalar> shell(dict.get<Pair<scalar>>("slipShell"));
+        slipShellInner_ = shell.first();
+        slipShellOuter_ = shell.second();
+    }
+
+    if (slipShellInner_ < 1 || slipShellOuter_ <= slipShellInner_)
+    {
+        FatalIOErrorInFunction(dict)
+            << "slipShell must satisfy 1 <= inner < outer (radii / drop radius)"
             << exit(FatalIOError);
     }
 
@@ -619,6 +660,20 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
     // Receiver gas phase.
     const volScalarField& alphaGas = this->pair().to();
 
+    // Z = alpha*Y is still at the start of the step here (alpha already
+    // advected), so Y = Z/alpha uses the start-of-step alpha when available
+    auto startAlpha = [&](const volScalarField& a) -> const volScalarField&
+    {
+        const word n("alphaStart." + IOobject::group(a.name()));
+        return
+            mesh.foundObject<volScalarField>(n)
+          ? mesh.lookupObject<volScalarField>(n)
+          : a;
+    };
+
+    const volScalarField& alphaLiqY = startAlpha(alpha);
+    const volScalarField& alphaGasY = startAlpha(alphaGas);
+
     const bool dispersedIsFrom =
         (dispersedPhaseName_ == this->pair().from().name());
 
@@ -692,7 +747,7 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
             ZgSample = (*Z_gasPtr)[gasCell];
 
             YgFromZSample =
-                clamp01(ZgSample/max(aGSample, alphaGasSampleMin));
+                clamp01(ZgSample/max(alphaGasY[gasCell], alphaGasSampleMin));
 
             YgEff = YgFromZSample;
         }
@@ -746,6 +801,11 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
 
         const scalarField& alphaGasN = tAlphaGasN();
 
+        const tmp<scalarField> tAlphaGasYN =
+            alphaGasY.boundaryField()[patchi].patchNeighbourField();
+
+        const scalarField& alphaGasYN = tAlphaGasYN();
+
         tmp<scalarField> tZgasN;
         const scalarField* ZgasNPtr = nullptr;
 
@@ -794,7 +854,7 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
                 ZgSample = (*ZgasNPtr)[fi];
 
                 YgFromZSample =
-                    clamp01(ZgSample/max(aGSample, alphaGasSampleMin));
+                    clamp01(ZgSample/max(alphaGasYN[fi], alphaGasSampleMin));
 
                 YgEff = YgFromZSample;
             }
@@ -848,7 +908,7 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
     const volPointInterpolation& vpi = volPointInterpolation::New(mesh);
 
     const scalarField rholP(vpi.interpolate(rhol));
-    const scalarField alphaPts(vpi.interpolate(alpha));
+    const scalarField alphaPts(vpi.interpolate(alphaLiqY));
 
     scalarField YliqEffP(vpi.interpolate(Y_liq));
 
@@ -1085,7 +1145,7 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
 
         if (dispersedIsFrom)
         {
-            const scalar aL = max(alpha[celli], scalar(0));
+            const scalar aL = max(alphaLiqY[celli], scalar(0));
 
             if (aL > alphaLiqSampleMin)
             {
@@ -1192,6 +1252,50 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
                     max(6.0*VcorePhys/mathematical::pi, SMALL),
                     scalar(1.0/3.0)
                 );
+        }
+    }
+
+    // Slip velocity: drop centre-of-mass velocity minus the continuous-phase
+    // velocity averaged over a shell slipShellInner..Outer drop radii away.
+    // The phases share one U, so adjacent-cell differences are not a slip.
+    List<vector> dropUcont(nDrops, Zero);
+    scalarList dropVshell(nDrops, 0.0);
+
+    if (slipVelocityMode_ == "shell" && nDrops > 0)
+    {
+        List<vector> dropUshellInt(nDrops, Zero);
+
+        forAll(alphaDisp, celli)
+        {
+            const scalar aCont = 1.0 - alphaDisp[celli];
+            if (aCont < alphaHi_) continue;
+
+            const scalar w = aCont*mesh.V()[celli];
+
+            for (label j = 0; j < nDrops; ++j)
+            {
+                const scalar R = 0.5*dropDvol[j];
+                if (R <= SMALL) continue;
+
+                const scalar r = mag(mesh.C()[celli] - dropC[j]);
+
+                if (r >= slipShellInner_*R && r <= slipShellOuter_*R)
+                {
+                    dropUshellInt[j] += w*Udisp[celli];
+                    dropVshell[j] += w;
+                }
+            }
+        }
+
+        for (label j = 0; j < nDrops; ++j)
+        {
+            reduce(dropUshellInt[j], sumOp<vector>());
+            reduce(dropVshell[j], sumOp<scalar>());
+
+            if (dropVshell[j] > SMALL)
+            {
+                dropUcont[j] = dropUshellInt[j]/dropVshell[j];
+            }
         }
     }
 
@@ -1322,6 +1426,12 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
             dropDp[j] = dropDvol[j];
         }
 
+        // Volume is conserved by MULES; the iso-surface area is not
+        if (dpMode_ == "perDropVol" && dropDvol[j] > SMALL)
+        {
+            dropDp[j] = dropDvol[j];
+        }
+
         if (dropAreaWeight[j] > SMALL)
         {
             const scalar rhogAvg =
@@ -1330,7 +1440,12 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
             const vector UgAvg = dropUgInt[j]/dropAreaWeight[j];
             const vector UlAvg = dropUlInt[j]/dropAreaWeight[j];
 
-            const scalar Urel = mag(UgAvg - UlAvg);
+            scalar Urel = mag(UgAvg - UlAvg);
+
+            if (slipVelocityMode_ == "shell" && dropVshell[j] > SMALL)
+            {
+                Urel = mag(dropUcm[j] - dropUcont[j]);
+            }
 
             dropUrel[j] = Urel;
 
@@ -1439,7 +1554,11 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
     // 4) Global fallback geometry + assemble mDotc
     scalar dpGeomGlobal = max(dp_, SMALL);
 
-    if (dp_ <= SMALL || dpMode_ == "globalVA" || dpMode_ == "perDropVA")
+    if
+    (
+        dp_ <= SMALL || dpMode_ == "globalVA"
+     || dpMode_ == "perDropVA" || dpMode_ == "perDropVol"
+    )
     {
         scalar VareaGlobalLocal = 0.0;
         scalar AtotIsoLocal = 0.0;
@@ -1635,7 +1754,7 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
         {
             dpCell = dpGeomGlobal;
         }
-        else if (dpMode_ == "perDropVA")
+        else if (dpMode_ == "perDropVA" || dpMode_ == "perDropVol")
         {
 
             if (j >= 0 && dropDp[j] > SMALL)
@@ -1697,6 +1816,54 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
         reduce(dropYeqAreaInt[j], sumOp<scalar>());
         reduce(dropRholAreaInt[j], sumOp<scalar>());
         reduce(dropDriveAreaInt[j], sumOp<scalar>());
+    }
+
+    // Only cells with a gas-side sample carry flux (about 60% of the iso area
+    // of a smeared interface), so rescale them to the drop's full area
+    scalarList dropAreaTarget(nDrops, 0.0);
+    scalarList dropAreaScale(nDrops, 1.0);
+
+    for (label j = 0; j < nDrops; ++j)
+    {
+        dropAreaTarget[j] =
+            (dropAreaMode_ == "volumeSphere")
+          ? mathematical::pi*sqr(dropDvol[j])/volumeFactor
+          : dropA[j];
+
+        if
+        (
+            correctDropArea_
+         && dropAreaEff[j] > SMALL
+         && dropAreaTarget[j] > SMALL
+        )
+        {
+            dropAreaScale[j] = dropAreaTarget[j]/dropAreaEff[j];
+        }
+    }
+
+    if (correctDropArea_)
+    {
+        forAll(mDotc_, celli)
+        {
+            const label j = dropId[celli];
+
+            if (j >= 0)
+            {
+                mDotc_[celli] *= dropAreaScale[j];
+            }
+        }
+
+        for (label j = 0; j < nDrops; ++j)
+        {
+            const scalar s = dropAreaScale[j];
+
+            dropFlux[j] *= s;
+            dropAreaEff[j] *= s;
+            dropYliqAreaInt[j] *= s;
+            dropYeqAreaInt[j] *= s;
+            dropRholAreaInt[j] *= s;
+            dropDriveAreaInt[j] *= s;
+        }
     }
 
     for (label j = 0; j < nDrops; ++j)
@@ -1840,7 +2007,10 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
                 << " Ucm=" << dropUcm[j]
                 << " Ufall=" << (dropUcm[j] & eFall)
                 << " Urel=" << dropUrel[j]
-                << " Re=" << dropRe[j];
+                << " Ucont=" << dropUcont[j]
+                << " Re=" << dropRe[j]
+                << " Atarget=" << dropAreaTarget[j]
+                << " areaScale=" << dropAreaScale[j];
 
             if (computeInternalCirculation)
             {

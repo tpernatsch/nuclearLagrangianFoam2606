@@ -43,6 +43,10 @@ class diffusiveMultiphaseSystem
 :
     public multiphaseSystem
 {
+    //- Phase fractions at the start of the step ("alphaStart.<phase>"),
+    //  consistent with the species storage Z = alpha*Y until Yi is solved
+    PtrList<volScalarField> alphaStart_;
+
 public:
 
     TypeName("diffusiveMultiphaseSystem");

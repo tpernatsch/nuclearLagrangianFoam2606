@@ -43,8 +43,13 @@
     liquidSherwoodModel     Higbie;
     liquidSherwood          2;
 
-    dpMode                  perDropVA;
+    dpMode                  perDropVA;     // fixed | globalVA | perDropVA | perDropVol
     dp                      3.0e-4;
+
+    dropArea                iso;           // iso | volumeSphere
+    correctDropArea         false;         // spread each drop's area over its flux cells
+    slipVelocity            interface;     // interface | shell
+    slipShell               (1.5 3);       // shell radii / drop radius (slipVelocity shell)
 }
 */
 
@@ -103,6 +108,17 @@ class gasDiffusionSimple
 
     scalar dp_;
     word dpMode_;
+
+    // Per-drop transfer area: iso (iso-surface) or volumeSphere (pi*Dvol^2)
+    word dropAreaMode_;
+
+    // Rescale flux cells so each drop transfers through its full area
+    bool correctDropArea_;
+
+    // Drop slip velocity: interface (adjacent cells) or shell (drop - shell)
+    word slipVelocityMode_;
+    scalar slipShellInner_;
+    scalar slipShellOuter_;
 
     // Dimensionless Henry/partition ratio:
         scalar k_;

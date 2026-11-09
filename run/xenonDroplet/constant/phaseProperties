@@ -72,7 +72,7 @@ massTransferModel
         k               2.08e-4;
 
         // ---------------- Transport / Sherwood ----------------
-        Dgas                  1e-5;
+        Dgas                  1e-5; // only enters k_g; He-Xe at 920 K, 5 kPa is ~7.5e-3
         Dliq                  2.006e-9;
 
         gasSherwoodModel      RanzMarshall;
@@ -84,8 +84,14 @@ massTransferModel
         muGas           4.6913e-05;
 
         // ---------------- Characteristic diameter ----------------
-        dpMode          perDropVA;
+        dpMode          perDropVol; // dp from drop volume (perDropVA: 6V/A, thesis)
         dp              3.0e-4;     // used only if dpMode=fixed
+
+        // ---------------- Transfer area / slip velocity ----------------
+        dropArea        volumeSphere; // pi*Dvol^2; use iso for deformed interfaces
+        correctDropArea true;         // spread each drop area over its flux cells
+        slipVelocity    shell;        // drop velocity minus gas velocity in a shell
+        slipShell       (1.5 3);      // shell radii / drop radius
     }//*/
 );
 

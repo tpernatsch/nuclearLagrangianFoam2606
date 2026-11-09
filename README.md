@@ -17,6 +17,7 @@ contexts, built against **OpenFOAM v2606** (OpenCFD/ESI).
 | `kinematicCloudFvOptions` | Single-phase incompressible counterpart of `nuclearCloudFvOptions`, for plain kinematic clouds on top of `pimpleFoam`/`simpleFoam`-like solvers. |
 | `flotation` | Mineral-flotation particle-population transport (`flotationSource` fvOption + collision/attachment efficiency, particle velocity/diffusivity and size-distribution submodels), ported from OpenFOAM 13 to v2606. |
 | `LogMoM` | Log-normal method-of-moments `diameterModel` for `reactingEuler`/`multiphaseSystem`: tracks a phase's particle size distribution via its scaled number-concentration/surface-area moments instead of a full sectional population balance. |
+| `xenonTransfer` | Interfacial species (xenon) transfer for `multiphaseInter` VOF: conservative `Z = alpha*Y` species transport, face-based liquid-to-gas source mapping and the `gasDiffusionSimple` two-film model with per-drop clustering (ported from E. F. Tiso's MSc thesis). Notes on the liquid-side closure in `src/xenonTransfer/doc/`. |
 
 ### Solvers (`applications/solvers/`)
 
@@ -26,6 +27,7 @@ contexts, built against **OpenFOAM v2606** (OpenCFD/ESI).
 | `msfrParcelFoam` | Same as above, expanded with neutronics and nuclear source terms, fully coupled to flow and temperature - for Molten Salt Reactor (MSFR) applications. |
 | `bubbleFoam` | Two compressible fluid phases sharing a common pressure, run-time-selectable phase models. |
 | `thermoParcelFoam` | Boussinesq-approximation incompressible PIMPLE solver with a kinematic Lagrangian cloud, surface film modelling, radiation and dynamic mesh support. |
+| `xenonTransferInterFoam` | `icoReactingMultiphaseInterFoam` variant using `xenonTransfer`: interfacial mass transfer evaluated after the PIMPLE loop, species solved in two passes. Case: `run/xenonDroplet`. |
 
 ### Utilities (`applications/utilities/`)
 

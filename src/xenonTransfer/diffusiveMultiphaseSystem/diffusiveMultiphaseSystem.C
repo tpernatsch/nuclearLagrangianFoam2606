@@ -57,25 +57,15 @@ diffusiveMultiphaseSystem::diffusiveMultiphaseSystem
     const fvMesh& mesh
 )
 :
-    multiphaseSystem(mesh)
-{}
-
-
-void diffusiveMultiphaseSystem::solve()
+    multiphaseSystem(mesh),
+    alphaStart_(phases_.size())
 {
-    const dictionary& alphaControls = mesh_.solverDict("alpha");
-    const label nAlphaSubCycles(alphaControls.get<label>("nAlphaSubCycles"));
-
-    const scalar totalDeltaTValue = mesh_.time().deltaTValue();
-
-    PtrList<volScalarField> alphaStart(phases_.size());
-
     label phasei = 0;
     for (const phaseModel& phase : phases_)
     {
-        alphaStart.set
+        alphaStart_.set
         (
-            phasei,
+            phasei++,
             new volScalarField
             (
                 IOobject
@@ -89,8 +79,19 @@ void diffusiveMultiphaseSystem::solve()
                 phase
             )
         );
+    }
+}
 
-        ++phasei;
+
+void diffusiveMultiphaseSystem::solve()
+{
+    const dictionary& alphaControls = mesh_.solverDict("alpha");
+    const label nAlphaSubCycles(alphaControls.get<label>("nAlphaSubCycles"));
+
+    label phasei = 0;
+    for (const phaseModel& phase : phases_)
+    {
+        alphaStart_[phasei++] == phase;
     }
 
     const Time& runTime = mesh_.time();
