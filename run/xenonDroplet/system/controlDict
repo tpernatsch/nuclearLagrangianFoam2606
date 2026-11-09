@@ -1,0 +1,188 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2112                                 |
+|   \\  /    A nd           | Website:                                        |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      controlDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+application     xenonTransferInterFoam;
+
+startFrom       latestTime;
+
+startTime       0;
+
+stopAt          endTime;
+
+endTime         0.015;
+
+deltaT          1e-7;
+
+writeControl    runTime;
+
+writeInterval   1e-3;
+
+purgeWrite      0;
+
+writeFormat     ascii;
+
+writePrecision  12;
+
+writeCompression on;
+
+timeFormat      general;
+
+timePrecision   6;
+
+runTimeModifiable yes;
+
+adjustTimeStep  yes;
+
+maxCo           0.5;
+maxAlphaCo      0.15;
+
+maxDeltaT       5e-6;
+
+libs ( "libxenonTransfer.so" );
+// ************************************************************************* //
+DebugSwitches
+{
+    gasDiffusionSimple 1;
+};
+
+functions
+{
+    // Conservative Xe inventory in liquid
+    liqRho_ZXe
+    {
+        type        multiply;
+        libs        ("libfieldFunctionObjects.so");
+        fields      (thermo:rho.liquid Zxenon.liquid);
+        result      liqRho_ZXe;
+        valueType   volScalarField;
+
+        executeControl timeStep;
+        writeControl   none;
+        log            false;
+    }
+
+    ZXeMass_in_liquid
+    {
+        type        volFieldValue;
+        libs        ("libfieldFunctionObjects.so");
+
+        regionType  all;
+        operation   volIntegrate;
+        fields      (liqRho_ZXe);
+
+        writeControl  runTime;
+        writeInterval 1e-5;
+
+        log         true;
+        writeFields false;
+    }
+
+    // Conservative Xe inventory in gas
+    gasRho_ZXe
+    {
+        type        multiply;
+        libs        ("libfieldFunctionObjects.so");
+        fields      (thermo:rho.gas Zxenon.gas);
+        result      gasRho_ZXe;
+        valueType   volScalarField;
+
+        executeControl timeStep;
+        writeControl   none;
+        log            false;
+    }
+
+    ZXeMass_in_gas
+    {
+        type        volFieldValue;
+        libs        ("libfieldFunctionObjects.so");
+
+        regionType  all;
+        operation   volIntegrate;
+        fields      (gasRho_ZXe);
+
+        writeControl  runTime;
+        writeInterval 1e-5;
+
+        log         true;
+        writeFields false;
+    }
+
+    // Total conservative Xe inventory
+    ZXe_MassDensity_total
+    {
+        type        add;
+        libs        ("libfieldFunctionObjects.so");
+        fields      (liqRho_ZXe gasRho_ZXe);
+        result      ZXe_MassDensity_total;
+        valueType   volScalarField;
+
+        executeControl timeStep;
+        writeControl   none;
+        log            false;
+    }
+
+    ZXeMass_total
+    {
+        type        volFieldValue;
+        libs        ("libfieldFunctionObjects.so");
+
+        regionType  all;
+        operation   volIntegrate;
+        fields      (ZXe_MassDensity_total);
+
+        writeControl  runTime;
+        writeInterval 1e-5;
+
+        log         true;
+        writeFields false;
+    }
+
+    // Integrated model transfer rate
+    mdotModel_Xe
+    {
+        type        volFieldValue;
+        libs        ("libfieldFunctionObjects.so");
+
+        regionType  all;
+        operation   volIntegrate;
+        fields      (mDotc);
+
+        writeControl  runTime;
+        writeInterval 1e-5;
+
+        log         true;
+        writeFields false;
+    }
+
+    UminMax
+    {
+        type        fieldMinMax;
+        libs        ("libfieldFunctionObjects.so");
+
+        fields      (U);
+        mode        magnitude;
+
+        executeControl  timeStep;
+        executeInterval 1;
+
+        writeControl  runTime;
+        writeInterval 1e-5;
+
+        log         true;
+        writeFields false;
+    }
+}

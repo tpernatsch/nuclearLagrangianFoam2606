@@ -1,0 +1,91 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  4.x                                   |
+|   \\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "constant";
+    object      thermophysicalProperties.liquid;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+thermoType
+{
+    type            heRhoThermo;
+    mixture         multiComponentMixture;
+    transport       const; //polynomial
+    thermo          hConst; //hPolynomial
+    equationOfState rhoConst; //icoPolynomial
+    specie          specie;
+    energy          sensibleEnthalpy;
+}
+
+species
+(
+    salt
+    xenon
+);
+
+inertSpecie salt;
+addDiffusion true;
+
+Dmol 2.006e-9; // molecular diffusivity for all non-inert species (m2/s)
+
+
+salt
+{
+    specie
+    {
+        //nMoles          1;
+        molWeight       89.425;
+    }
+    equationOfState
+    {
+        rho 		4124.77; //rhoCoeffs<8>    (4124.77 0 0 0 0 0 0 0);
+    }
+    thermodynamics
+    {
+        Cp              1594; //CpCoeffs<8>     (1594 0 0 0 0 0 0 0);
+        Hf              0;
+        Sf              0;
+    }
+    transport
+    {
+        mu              0.006068; //muCoeffs<8>     (0.006068 0 0 0 0 0 0 0);
+        Pr              9.579; //kappa = (Cp*mu)/Pr kappaCoeffs<8>  (1.0097 0 0 0 0 0 0 0);
+        Sc              1;
+    }
+}
+
+xenon
+{
+    specie
+    {
+        //nMoles          1;
+        molWeight       135;
+    }
+    equationOfState
+    {
+        rho 		4124.77; //rhoCoeffs<8>    (4124.77 0 0 0 0 0 0 0);
+    }
+    thermodynamics
+    {
+        Cp              1594; //CpCoeffs<8>     (1594 0 0 0 0 0 0 0);
+        Hf              0;
+        Sf              0;
+    }
+    transport
+    {
+        mu              0.006068; //muCoeffs<8>     (0.006068 0 0 0 0 0 0 0);
+        Pr              9.579; //kappa = (Cp*mu)/Pr  kappaCoeffs<8>  (1.0097 0 0 0 0 0 0 0); 
+        Sc              1;
+    }
+}
+
+// ************************************************************************* //

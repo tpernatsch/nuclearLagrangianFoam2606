@@ -1,0 +1,24 @@
+#!/bin/sh
+cd "${0%/*}" || exit                                # Run from this directory
+. ${WM_PROJECT_DIR:?}/bin/tools/RunFunctions        # Tutorial run functions
+#------------------------------------------------------------------------------
+# Falling molten-salt droplet releasing xenon into helium (xenonTransferInterFoam).
+# Needs the repo environment: source etc/sourceme.sh from the repository root.
+
+# Mesh is kept in mesh/polyMesh (gzipped) because cleanCase wipes constant/polyMesh
+rm -rf constant/polyMesh
+cp -r mesh/polyMesh constant/
+
+restore0Dir
+runApplication setFields
+
+if [ "$1" = "-serial" ]
+then
+    runApplication $(getApplication)
+else
+    runApplication decomposePar
+    runParallel $(getApplication)
+    runApplication reconstructPar -newTimes
+fi
+
+#------------------------------------------------------------------------------

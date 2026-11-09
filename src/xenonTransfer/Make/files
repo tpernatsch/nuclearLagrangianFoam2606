@@ -1,0 +1,10 @@
+phaseModel/diffusivePhaseModel/diffusivePhaseModels.C
+
+diffusiveMultiphaseSystem/diffusiveMultiphaseSystem.C
+diffusiveMultiphaseSystem/diffusiveMultiphaseSystems.C
+
+InterfaceCompositionModel/diffusionInterfaceCompositionModels.C
+
+LIB = $(FOAM_USER_LIBBIN)/libxenonTransfer
+
+

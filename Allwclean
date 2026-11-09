@@ -7,11 +7,13 @@ cd "${0%/*}" || exit                                # Run from this directory
 . ./etc/sourceme.sh
 
 wclean applications/utilities/setLogNormal
+wclean applications/solvers/xenonTransferInterFoam
 wclean applications/solvers/thermoParcelFoam
 wclean applications/solvers/bubbleFoam
 wclean applications/solvers/msfrParcelFoam
 wclean applications/solvers/nuclearParcelFoam
 
+wclean src/xenonTransfer
 wclean src/nuclearCloudFvOptions
 wclean src/kinematicCloudFvOptions
 wclean src/nuclear

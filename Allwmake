@@ -16,12 +16,14 @@ wmake src/flotation
 wmake src/nuclear
 wmake src/kinematicCloudFvOptions
 wmake src/nuclearCloudFvOptions
+wmake src/xenonTransfer
 
 # Solvers and utilities
 wmake applications/solvers/nuclearParcelFoam
 wmake applications/solvers/msfrParcelFoam
 wmake applications/solvers/bubbleFoam
 wmake applications/solvers/thermoParcelFoam
+wmake applications/solvers/xenonTransferInterFoam
 wmake applications/utilities/setLogNormal
 
 echo

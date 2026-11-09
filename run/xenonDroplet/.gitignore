@@ -1,0 +1,8 @@
+/0/
+/constant/polyMesh/
+/processor*/
+/postProcessing/
+/[0-9]*/
+!/0.orig/
+/log.*
+*.foam
