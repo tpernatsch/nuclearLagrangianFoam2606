@@ -537,11 +537,23 @@ def cladding_layers(cfg, p):
     return [(t, c["k"])]
 
 
+def bl_params(cfg):
+    """First cell and growth ratio of the wall layer at this MESH_LEVEL. With BL_SCALE_WITH_LEVEL, BL_FIRST_CELL and
+    BL_GROWTH are the medium values, scaled with the level's cell size as in meshStudy.py: first cell x h/h_medium,
+    growth ratio ^ (h/h_medium); so the wall layer is refined together with the core. Without it (and in settings
+    files written before the option) they are used as given at every level."""
+    d1, r = cfg.BL_FIRST_CELL, cfg.BL_GROWTH
+    if getattr(cfg, "BL_SCALE_WITH_LEVEL", False):
+        f = MESH_LEVELS[cfg.MESH_LEVEL]["h"] / MESH_LEVELS["medium"]["h"]
+        d1, r = d1 * f, r ** f
+    return d1, r
+
+
 def build_mesh(cfg):
     lvl = MESH_LEVELS[cfg.MESH_LEVEL]
     h, dz = lvl["h"], lvl["dz"]
     bl = cfg.BOUNDARY_LAYER
-    d1, r = cfg.BL_FIRST_CELL, cfg.BL_GROWTH
+    d1, r = bl_params(cfg)
     top_bl = bl and pick_geometry(cfg, cfg.THERMAL_BC["freeSurface"])["mode"] != "adiabatic"
     m = {}
     if is_wedge(cfg):                           # axisymmetric: one cell around, radial x axial only
@@ -3155,7 +3167,11 @@ def write_summary(c, cfg, d, warnings, note):
         f"Geometry          : {cfg.GEOMETRY} - {geo}",
         f"Volume            : {1e6 * d['V']:.4f} cm3",
         f"Mesh              : {cfg.MESH_LEVEL}{' + wall refinement' if cfg.BOUNDARY_LAYER else ''}  {cells}  -> {m['cells']:,} cells",
-        f"First cell [um]   : radial (outer wall) {1e6 * m['first_rad']:.1f}, axial (bottom) {1e6 * m['first_ax']:.1f}",
+        f"First cell [um]   : radial (outer wall) {1e6 * m['first_rad']:.1f}, axial (bottom) {1e6 * m['first_ax']:.1f}"
+        + (f"  (wall layer {1e6 * bl_params(cfg)[0]:.3g} um, growth {bl_params(cfg)[1]:.4g}"
+           + (f": medium {1e6 * cfg.BL_FIRST_CELL:.3g} um / {cfg.BL_GROWTH:g} scaled with the level)"
+              if getattr(cfg, "BL_SCALE_WITH_LEVEL", False) else ", same at every level)")
+           if cfg.BOUNDARY_LAYER else ""),
         "",
         f"Liquid            : rho {cfg.RHO}, cp {cfg.CP}, k {cfg.K}, beta {cfg.BETA}, mu(TRef) {d['mu']:.4g} Pa s  ->  "
         f"nu {d['nu']:.3e} m2/s, alpha {d['a']:.3e} m2/s, Pr {d['Pr']:.2f}",
@@ -3415,7 +3431,10 @@ def questionnaire(cfg):
     section(3, N, "Mesh")
     cfg.BOUNDARY_LAYER = Ask.yes("\nRefine the mesh towards the walls (boundary layer)?", cfg.BOUNDARY_LAYER)
     if cfg.BOUNDARY_LAYER:
-        cfg.BL_FIRST_CELL = 1e-6 * Ask.number("   first-cell thickness", 1e6 * cfg.BL_FIRST_CELL, 1, 200, "um", soft=(10, 80))
+        scaled = getattr(cfg, "BL_SCALE_WITH_LEVEL", False)
+        cfg.BL_FIRST_CELL = 1e-6 * Ask.number("   first-cell thickness" + (" at the medium level (scaled with the level)"
+                                                                         if scaled else ""),
+                                              1e6 * cfg.BL_FIRST_CELL, 1, 200, "um", soft=(10, 80))
     cfg.MESH_TYPE = Ask.choice("Mesh type?", [
         ("3D", "full 3D mesh"),
         ("wedge", f"axisymmetric wedge ({getattr(cfg, 'WEDGE_ANGLE', 5.0):g} deg, one cell around): same steady "

@@ -24,8 +24,12 @@ B_CORE_ARC_RADIUS = 0.567      # core-edge arc midpoint radius / R  (= B_CORE_HA
 # ----------------------------------------------------------------------------- mesh
 MESH_LEVEL = "medium"          # coarse | medium | fine | xfine | xxfine  (cell sizes in setupCase.MESH_LEVELS)
 BOUNDARY_LAYER = True          # True: geometric wall refinement on no-slip / heat-transfer walls
-BL_FIRST_CELL = 30e-6          # first-cell thickness at refined walls [m]
-BL_GROWTH = 1.15               # max cell-to-cell expansion ratio inside the refined layer
+BL_FIRST_CELL = 30e-6          # first-cell thickness at refined walls [m] (at medium if BL_SCALE_WITH_LEVEL)
+BL_GROWTH = 1.15               # max cell-to-cell expansion ratio inside the refined layer (idem)
+BL_SCALE_WITH_LEVEL = True     # scale both with the level's cell size h as meshStudy.py: first cell x h/h_medium,
+                               # growth ^ (h/h_medium) (xxfine: 10.8 um, 1.0516). False: the values above at every
+                               # level (the wall cells then stay those of medium, and the deposition fluxes do not
+                               # converge with the level)
 MESH_TYPE = "wedge"             # "3D" | "wedge" (axisymmetric, one cell around: the steady flows are axisymmetric)
 WEDGE_ANGLE = 5.0              # [deg] wedge opening (wedge patches front/back; B: axis as a collapsed edge)
 
@@ -242,7 +246,8 @@ PARTICLES = dict(
                                         # noisy for 10-20 um with dt >> tau_p: U_p lags the new U_c by one step)
     lift_scale=1.0,                     # Ekanayake: multiplier of the whole lift, for sensitivity tests only
     carrier_mu_T=True,                  # parcels feel the flow's mu(T); False: uniform mu(TRef), as old cases
-    max_co=0.5,
+    max_co=0.05,                        # cloud Courant number: 0.5 piles parcels up under the free surface; 0.1 still
+                                        # moves 10 nm outer-wall deposition 4x vs 0.05 (coStudy, Nov 2026)
     log_frequency=1000,
     force_magnitudes=True,      # cloud function ForceMagnitudes (needs it registered for nuclear parcels)
     particle=dict(rho0=10980.0, T0=883.0, Cp0=296.0, kappa0=115.0, mu0=None),
