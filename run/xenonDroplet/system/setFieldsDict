@@ -43,8 +43,10 @@ regions
             volScalarFieldValue alpha.gas    0
 
             // Species in liquid – this is the *actual* field name
-            volScalarFieldValue xenon.liquid 4e-5
-            volScalarFieldValue salt.liquid 0.99996
+            // Dilute reference 4e-8 (thesis 4e-5: gas near the drop reaches
+            // Y_Xe 0.9 and leaves the dilute model; removal is linear in Y0)
+            volScalarFieldValue xenon.liquid 4e-8
+            volScalarFieldValue salt.liquid 0.99999996
             
 
             // velocity
