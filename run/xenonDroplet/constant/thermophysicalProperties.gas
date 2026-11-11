@@ -20,7 +20,8 @@ thermoType
     mixture         multiComponentMixture;
     transport       const;
     thermo          hConst;
-    equationOfState incompressiblePerfectGas; // rho = pRef*W/(R*T), 0.00261 kg/m3 for He at 920 K
+    equationOfState rhoConst; // composition-independent: the Z equations carry no density, so a
+                              // W-dependent rho (Xe 135 vs He 4) breaks xenon conservation
     specie          specie;
     energy          sensibleEnthalpy;
 }
@@ -45,7 +46,7 @@ helium
     }
     equationOfState
     {
-        pRef         5000;
+        rho          0.002615; // He at 920 K, 5 kPa: p*W/(R*T)
     }
     thermodynamics
     {
@@ -68,7 +69,7 @@ xenon
     }
     equationOfState
     {
-        pRef         5000;
+        rho          0.002615; // = helium on purpose (dilute xenon)
     }
     thermodynamics
     {
