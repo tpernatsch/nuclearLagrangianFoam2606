@@ -332,6 +332,11 @@ bx.set_ylabel("rel. error (%)")
 bx.set_xlabel(r"$Fo = 4 D_\ell \theta / d_0^2$")
 fig4 = save(fig, "vn2")
 
+import csv
+V2 = list(csv.DictReader(open(HERE/"data"/"staticDropV2.csv")))
+v2Rows = [(r["mesh"], f"{float(r['dx_um']):.0f}", f"{int(r['nCells'])//1000}k", f"{float(r['d0_um']):.1f}",
+           f"{100*float(r['maxErr']):+.3f}", f"{float(r['theta_t']):.4f}", f"{float(r['imbalance']):+.1e}",
+           f"{float(r['orphanMax']):.1e}", f"{float(r['Umax']):.1f} / {float(r['Ulate']):.2f}") for r in V2]
 vn2Rows = []
 for FoQ in [1e-3, 1e-2, 0.03, 0.05, 0.1, VN2["Fo"][-1]]:
     i = int(np.argmin(np.abs(VN2["Fo"] - FoQ)))
@@ -723,6 +728,29 @@ Newman to 4&times;10<sup>&minus;4</sup> and total xenon is conserved, but the ga
 by moles) and the receiver capacity limiter clips up to 6 % of the flux in single steps. Constant gas density and the gas-side limiter assume dilute
 xenon, so at this Y<sub>0</sub> the gas side is outside the model: either a realistic (lower) Y<sub>0</sub> is used, which is equivalent because the
 liquid problem is linear in Y, or the gas needs a composition-dependent density with a density-weighted species equation.</li>
+</ul>
+
+<p><b>V2 (passed): static drop, three meshes.</b> <code>run/xenonDropStatic</code>: the same 0.3 mm drop at rest in the centre of a
+0.9 mm cube of uniform cubic cells, g = 0, closed except the top (pressure reference), with the V-N2 settings (Newman, bulk drive,
+<code>donorSink drop</code>, <code>dropHaloLayers 3</code>, D<sub>&#8467;</sub> &times; 1000, Y<sub>0</sub> = 4&times;10<sup>&minus;8</sup>, 1.5 ms,
+Fo up to 0.135). <code>Allrun -res coarse|medium|fine</code> selects 10, 15 or 20 cells per diameter. A coded function object
+(<code>boundaryXe</code>) integrates the xenon convected through the open patch, so conservation is checked as
+(total change + boundary outflow)/M<sub>0</sub>. Script: <code>test/newmanSphere/compareStaticMeshes.py</code>.</p>
+{table(["mesh", "dx (&micro;m)", "cells", "d<sub>0</sub> (&micro;m)", "max rel. error in M/M<sub>0</sub> (%)", "&theta;/t", "xenon imbalance / M<sub>0</sub>", "max orphanFrac", "parasitic U, peak / late (m/s)"], v2Rows)}
+<p style="font-size:8.6pt;color:#52514e">Table 8. V2. d<sub>0</sub> is the volume-equivalent diameter of the initial staircase drop from
+<code>setFields</code> (nominal 300 &micro;m); each run is compared with Newman at its own d<sub>0</sub>. &ldquo;Late&rdquo;: mean over the second
+half of the run.</p>
+<ul>
+<li>The closure is mesh-independent: the error stays below 10<sup>&minus;3</sup> on all meshes and decreases with refinement. The acceptance
+in table 6 (2 % at 10, 50, 100 ms with nominal D<sub>&#8467;</sub>) is replaced by the same Fo range reached with the accelerated D<sub>&#8467;</sub>;
+nominal runs of 0.1 s are not needed to test the closure, which depends on D<sub>&#8467;</sub> and t only through Fo.</li>
+<li>Xenon is conserved to 3&times;10<sup>&minus;7</sup> M<sub>0</sub> once the boundary flux is accounted for. The open top must keep
+<code>zeroGradient</code> for the gas species: with <code>inletOutlet</code> (inflowing gas pure helium) the faces with small backflow
+from the parasitic currents become Y = 0 and drain xenon by diffusion (1.4&ndash;2.5 % of M<sub>0</sub> lost in 1.5 ms in a test).</li>
+<li>Parasitic currents: a start-up peak of 5&ndash;6 m/s on all meshes (staircase initial interface) and 0.09&ndash;0.18 m/s afterwards, not decreasing
+from the medium to the fine mesh (capillary number &mu;<sub>g</sub>U/&sigma; &asymp; 2&times;10<sup>&minus;5</sup>, typical of CSF). They do not
+affect the Newman closure, which uses the drop age and bulk concentration, but they still rule out the stretching renewal (section 3.2) and
+are the next item to reduce (smooth initial interface, curvature smoothing).</li>
 </ul>
 
 <h2>5. Geometry and slip fixes already applied (for reference)</h2>

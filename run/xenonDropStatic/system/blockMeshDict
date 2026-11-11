@@ -1,0 +1,24 @@
+FoamFile { version 2.0; format ascii; class dictionary; object blockMeshDict; }
+
+// Static drop (V2): cube of uniform cubic cells; dx set by Allrun -res
+scale   1e-3;
+
+L   0.9;        // cube edge
+dx  0.02;       // cell size: coarse 0.03, medium 0.02, fine 0.015 (10, 15, 20 cells per 0.3 mm)
+h   #eval{ 0.5*$L };
+n   #eval{ round($L/$dx) };
+
+vertices
+(
+    (-$h -$h 0) ($h -$h 0) ($h $h 0) (-$h $h 0)
+    (-$h -$h $L) ($h -$h $L) ($h $h $L) (-$h $h $L)
+);
+
+blocks ( hex (0 1 2 3 4 5 6 7) ($n $n $n) simpleGrading (1 1 1) );
+
+boundary
+(
+    outlet { type patch; faces ((4 5 6 7)); }   // top: pressure reference; all other faces are walls
+);
+
+defaultPatch { name walls; type wall; }

@@ -1,0 +1,108 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2312                                 |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      phaseProperties;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+type            diffusiveMassTransferMultiphaseSystem;
+
+phases          (gas liquid);
+
+gas
+{
+    type            diffusiveMultiComponentMovingPhaseModel;
+    residualAlpha   1e-6;
+}
+
+liquid
+{
+    type            diffusiveMultiComponentMovingPhaseModel;
+    residualAlpha   1e-6;
+}
+
+surfaceTension
+(
+    (gas and liquid)
+    {
+        type    constant;
+        sigma   0.2617; //salt at 1017K by Yahima
+    }
+);
+
+
+massTransferModel
+(
+    (liquid to gas)
+    {
+        type            gasDiffusionSimple;
+        species         xenon.gas;
+
+        C               1; //just a scaling factor for the mass transfer rate
+
+        dispersedPhase  liquid;
+        geometryVolumeFactor  1; //full geometry
+
+        // ---------------- Interface detection / masking ----------------
+        isoAlpha        0.5;
+        alphaBandMin    1e-6;
+        alphaLo         0.05;
+        alphaHi         0.95;
+
+        // ---------------- Bubble tracking ----------------
+        alphaClusterCut 0.5;
+        minDropCells    4;
+        dropHaloLayers  3;            // attach the smeared liquid around each drop to it
+
+        // ---------------- Diagnostics ----------------
+        debugDeff       true;
+        debugDrops      true;
+        debugInternalCirculation   false;
+        writeDropFields false;
+
+        // ---------------- Equilibrium ----------------
+        k               2.08e-4;
+
+        // ---------------- Transport / Sherwood ----------------
+        Dgas                  1e-5; // only enters k_g; He-Xe at 920 K, 5 kPa is ~7.5e-3
+        Dliq                  2.006e-6;   // x1000 (accelerated: whole Newman curve in 1.5 ms)
+
+        gasSherwoodModel      RanzMarshall;
+        gasSherwood           2;
+
+        liquidSherwoodModel   Newman;   // stagnant drop, Sh(Fo) from contactAge (thesis: fixed)
+        liquidSherwood        2;        // fixed value (thesis 2-100); Newman: off-drop liquid only
+        // liquidDrive bulk is the default with Newman
+
+        muGas           4.6913e-05;
+
+        // ---------------- Characteristic diameter ----------------
+        dpMode          perDropVol; // dp from drop volume (perDropVA: 6V/A, thesis)
+        dp              3.0e-4;     // used only if dpMode=fixed
+
+        // ---------------- Transfer area / slip velocity ----------------
+        dropArea        volumeSphere; // pi*Dvol^2; use iso for deformed interfaces
+        correctDropArea true;         // spread each drop area over its flux cells
+        slipVelocity    shell;        // drop velocity minus gas velocity in a shell
+        slipShell       (1.5 3);      // shell radii / drop radius
+
+        // ---------------- Contact age (contactAge.liquid, s) ----------------
+        contactAge      true;         // time spent as a drop in contact with helium
+        ageAlphaCut     1e-3;
+        surfaceRenewal  none;         // stretching: fresh area resets age (parasitic currents!)
+    }//*/
+);
+
+// Minimum allowable pressure
+pMin            1000;
+
+// ************************************************************************* //

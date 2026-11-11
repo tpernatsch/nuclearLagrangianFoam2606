@@ -1,0 +1,86 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2312                                 |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      thermophysicalProperties.gas;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+thermoType
+{
+    type            heRhoThermo;
+    mixture         multiComponentMixture;
+    transport       const;
+    thermo          hConst;
+    equationOfState rhoConst; // composition-independent: the Z equations carry no density, so a
+                              // W-dependent rho (Xe 135 vs He 4) breaks xenon conservation
+    specie          specie;
+    energy          sensibleEnthalpy;
+}
+
+species
+(
+    helium
+    xenon
+);
+
+inertSpecie helium;
+addDiffusion true;
+
+Dmol 1e-5; // molecular diffusivity for all non-inert species (m2/s)
+
+helium
+{
+    specie
+    {
+        nMoles          1;
+        molWeight       4;
+    }
+    equationOfState
+    {
+        rho          0.002615; // He at 920 K, 5 kPa: p*W/(R*T)
+    }
+    thermodynamics
+    {
+        Cp          5193;
+        Hf          0;
+    }
+    transport
+    {
+        mu          4.6913e-05;
+        Pr          0.665;
+    }
+}
+
+xenon
+{
+    specie
+    {
+        nMoles          1;
+        molWeight       135;
+    }
+    equationOfState
+    {
+        rho          0.002615; // = helium on purpose (dilute xenon)
+    }
+    thermodynamics
+    {
+        Cp          158;
+        Hf          0;
+    }
+    transport
+    {
+        mu          7.5e-05;
+        Pr          2.0973;
+    }
+}
+
+// ************************************************************************* //

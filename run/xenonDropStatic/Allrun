@@ -1,0 +1,46 @@
+#!/bin/sh
+cd "${0%/*}" || exit                                # Run from this directory
+. ${WM_PROJECT_DIR:?}/bin/tools/RunFunctions        # Tutorial run functions
+#------------------------------------------------------------------------------
+# Static 0.3 mm salt drop in helium, g = 0 (verification V2: Newman is exact).
+# Needs the repo environment: source etc/sourceme.sh from the repository root.
+# Options: -res coarse|medium|fine (dx 30, 20, 15 um; default medium), -serial
+
+dx=0.02
+parallel=true
+
+while [ "$#" -gt 0 ]
+do
+    case "$1" in
+        -res)
+            case "$2" in
+                coarse) dx=0.03 ;;
+                medium) dx=0.02 ;;
+                fine)   dx=0.015 ;;
+                *) echo "Unknown resolution $2"; exit 1 ;;
+            esac
+            shift ;;
+        -serial) parallel=false ;;
+        *) echo "Unknown option $1 (use -res coarse|medium|fine, -serial)"; exit 1 ;;
+    esac
+    shift
+done
+
+# Plain substitution: foamDictionary -set would expand the #eval entries
+sed -i "s/^dx .*/dx  $dx;/" system/blockMeshDict
+runApplication blockMesh
+runApplication checkMesh
+
+restore0Dir
+runApplication setFields
+
+if [ "$parallel" = true ]
+then
+    runApplication decomposePar
+    runParallel $(getApplication)
+    runApplication reconstructPar -newTimes
+else
+    runApplication $(getApplication)
+fi
+
+#------------------------------------------------------------------------------

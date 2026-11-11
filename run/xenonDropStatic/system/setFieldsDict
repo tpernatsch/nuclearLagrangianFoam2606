@@ -1,0 +1,60 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2112                                 |
+|   \\  /    A nd           | Website:                                        |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      setFieldsDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+defaultFieldValues
+(
+    /*volScalarFieldValue alpha.gas       1//only air in the domain
+    volScalarFieldValue alpha.liquid    0
+    volVectorFieldValue U (0 0 0) // reset velocity in the whole domain
+    volScalarFieldValue p_rgh 5000
+
+
+    volScalarFieldValue helium.gas      1
+    volScalarFieldValue xenon.gas       0
+
+    volScalarFieldValue xenon.liquid    0
+    volScalarFieldValue salt.liquid     1*/
+);
+regions
+(
+    sphereToCell
+    {
+        centre (0 0 0.00045);
+        radius 0.00015;//~0.3 mm sphere
+
+        fieldValues
+        (
+            // VOF
+            volScalarFieldValue alpha.liquid 1
+            volScalarFieldValue alpha.gas    0
+
+            // Species in liquid – this is the *actual* field name
+            // Dilute reference 4e-8 (thesis 4e-5: gas near the drop reaches
+            // Y_Xe 0.9 and leaves the dilute model; removal is linear in Y0)
+            volScalarFieldValue xenon.liquid 4e-8
+            volScalarFieldValue salt.liquid 0.99999996
+            
+
+            // velocity
+            volVectorFieldValue U (0 0 0)
+            //volScalarFieldValue p_rgh 8500
+        );
+    }
+);
+
+
+// ************************************************************************* //
