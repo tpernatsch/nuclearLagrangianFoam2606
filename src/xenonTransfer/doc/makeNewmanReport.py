@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build NewmanLiquidSideModel.pdf: liquid-side xenon transfer from a falling
-molten-salt droplet (problem, analytical background, implementation plan,
-verification plan, residence time).
+molten-salt droplet (problem, analytical background, implementation,
+verification, residence time).
 
 Every number in the report is computed here. Run: python3 makeNewmanReport.py
 Needs numpy, matplotlib, weasyprint.
@@ -315,6 +315,30 @@ ax.set_xlabel("free-fall height in helium H (m)")
 ax.set_ylabel("xenon removed, Newman (%)")
 fig3 = save(fig, "height")
 
+# Fig 4 / table 7: V-N2 case verification (test/newmanSphere/checkNewmanCase.py output)
+VN2 = np.genfromtxt(HERE/"data"/"newmanVN2.csv", delimiter=",", names=True)
+VN2_d0 = 2.975134e-4  # initial Dvol of the V-N2 run [m]
+VN2_err = np.abs(VN2["Ml_M0"]/VN2["newman"] - 1)
+fig, (ax, bx) = plt.subplots(2, 1, figsize=(6.3, 4.2), sharex=True, gridspec_kw=dict(height_ratios=[2.2, 1]))
+ax.plot(VN2["Fo"], 100*(1 - VN2["newman"]), color=C1)
+ax.plot(VN2["Fo"][::4], 100*(1 - VN2["Ml_M0"][::4]), "o", ms=4.5, mfc="white", mec=C2, mew=1.2)
+ax.text(0.02, 0.88, "Newman, exact", transform=ax.transAxes, color=INK, fontsize=8)
+ax.text(0.02, 0.76, "CFD, liquid xenon inventory (every 4th sample)", transform=ax.transAxes, color=INK2, fontsize=8)
+ax.set_ylabel("xenon removed (%)")
+ax.set_ylim(0, 100)
+bx.plot(VN2["Fo"], 100*(VN2["Ml_M0"]/VN2["newman"] - 1), color=C2)
+bx.axhline(0, color=INK2, lw=0.8)
+bx.set_ylabel("rel. error (%)")
+bx.set_xlabel(r"$Fo = 4 D_\ell \theta / d_0^2$")
+fig4 = save(fig, "vn2")
+
+vn2Rows = []
+for FoQ in [1e-3, 1e-2, 0.03, 0.05, 0.1, VN2["Fo"][-1]]:
+    i = int(np.argmin(np.abs(VN2["Fo"] - FoQ)))
+    vn2Rows.append((f"{VN2['t'][i]*1e3:.3g}", f"{VN2['theta'][i]/VN2['t'][i]:.4f}", f"{VN2['Fo'][i]:.3g}",
+                    f"{100*(1 - VN2['Ml_M0'][i]):.2f}", f"{100*(1 - VN2['newman'][i]):.2f}",
+                    f"{100*(VN2['Ml_M0'][i]/VN2['newman'][i] - 1):+.3f}", f"{VN2['Mtot_M0'][i]:.5f}"))
+
 # ---------------------------------------------------------------- equations (mathtext -> svg)
 EQ = {}
 
@@ -449,7 +473,7 @@ ol.refs li { font-size: 8.8pt; margin-bottom: 1.2mm; }
 html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
 
 <h1>Liquid-side xenon transfer from a falling molten-salt droplet</h1>
-<div class="sub">Problem statement, analytical background (Newman), implementation plan, verification plan and residence-time
+<div class="sub">Problem statement, analytical background (Newman), implementation, verification and residence-time
 analysis for <code>xenonTransferInterFoam</code> / <code>gasDiffusionSimple</code> (tom-v2606). All numbers in this document are
 computed by <code>src/xenonTransfer/doc/makeNewmanReport.py</code>.</div>
 
@@ -460,8 +484,8 @@ is zero: Newman&rsquo;s problem [1, 2]. The thesis closes the liquid side with a
 inner solution removes {100*timeRows[2][2]:.1f} % of the xenon in the 11.5 ms simulated in the thesis, against
 {THESIS['removed_Sh2']} % obtained with Sh<sub>&#8467;</sub> = 2: about {timeRows[2][2]*100/THESIS['removed_Sh2']:.0f}&times; more. The concentration
 boundary layer inside the drop is a few micrometres thick at these times and cannot be resolved by the VOF mesh (16&ndash;30 &micro;m cells),
-so a subgrid closure k<sub>&#8467;</sub>(t) is required. This document derives it, proposes how to carry the contact time
-through droplet series, re-entry and splashing, and lists what must be verified before using it.</div>
+so a subgrid closure k<sub>&#8467;</sub>(t) is required. This document derives it, describes its implementation and how the contact time is carried
+through droplet series, re-entry and splashing, and reports the verification done so far (section 4.3).</div>
 
 <h2>1. Problem</h2>
 <h3>1.1 Current model</h3>
@@ -559,18 +583,40 @@ affects the drag (Cunningham factor {cunningham(d0):.3f}), not the liquid side.<
 </ul>
 
 <h2>3. Implementation</h2>
-<p>Status: the contact age &theta; (section 3.2) is implemented (<code>contactAge</code>, <code>surfaceRenewal</code>); the Newman closure
-(section 3.1) is not yet implemented and is the next step.</p>
-<h3>3.1 Closure (planned)</h3>
-<p>New option <code>liquidSherwoodModel Newman;</code> in <code>gasDiffusionSimple</code>. For each drop j:</p>
+<p>Status: both the contact age &theta; (section 3.2: <code>contactAge</code>, <code>surfaceRenewal</code>) and the Newman closure
+(section 3.1: <code>liquidSherwoodModel Newman</code>) are implemented; V0 and the case test V-N2 pass (section 4).</p>
+<h3>3.1 Closure</h3>
+<p>Option <code>liquidSherwoodModel Newman;</code> in <code>gasDiffusionSimple</code>. For each drop j:</p>
 {EQ['flux']}
-<p>where &theta;<sub>j</sub> is the contact time of drop j, A<sub>j</sub> its transfer area (already available:
-<code>dropArea iso | volumeSphere</code> with <code>correctDropArea</code>), and Y&#772;<sub>&#8467;,j</sub> the mass-weighted bulk xenon
-fraction of the drop (already computed as <code>dropYbulk</code>). The drop flux is distributed over the drop&rsquo;s flux cells
-proportionally to their area, so the existing conservative face-based mapping to the gas is reused unchanged. Sh(Fo) is evaluated
-with the short-time expression for Fo &lt; {FO_SWITCH} and the series (truncated where n&sup2;&pi;&sup2;Fo &gt; 50) above.</p>
-<p>Driving the flux with the bulk value instead of the interface-cell value removes the mesh dependence of the sampled
-concentration and makes the CFD drop reproduce the Newman curve exactly in the limit where it applies.</p>
+<p>where &theta;<sub>j</sub> is the mass-weighted contact age of drop j (section 3.2), A<sub>j</sub> its transfer area
+(<code>dropArea iso | volumeSphere</code> with <code>correctDropArea</code>), and Y&#772;<sub>&#8467;,j</sub> the mass-weighted bulk xenon
+fraction of the drop. Four pieces are needed, and all four are required for the CFD drop to follow Newman:</p>
+<ul>
+<li><b>Sh from the age, over the step.</b> Sh is singular as Fo &rarr; 0 and the source is explicit (forward Euler: the bulk loses
+1.5&nbsp;Sh&nbsp;&Delta;Fo of its content per step, from dln(1&minus;F)/dFo = &minus;1.5 Sh). The code therefore uses the coefficient for which
+the explicit step loses exactly the Newman fraction of the step,
+Sh<sub>step</sub> = [1 &minus; (1&minus;F(Fo<sub>1</sub>))/(1&minus;F(Fo<sub>0</sub>))]/(1.5 &Delta;Fo), with
+Fo<sub>0,1</sub> = 4D<sub>&#8467;</sub>(&theta;<sub>j</sub> &minus; &Delta;t, &theta;<sub>j</sub>)/d<sub>j</sub>&sup2;. The product of the step losses then
+equals 1 &minus; F exactly, for any time step and including the first step (the log-average Sh&#772;, exact for an exponential update, over-removes by
+&Sigma;(&beta;&Delta;t)&sup2;/2; measured 0.6 % at Fo = 0.13 in V-N2). F and Sh use the short-time form for Fo &lt; {FO_SWITCH} and 30 series terms above
+(<code>newmanSphere.H</code>, header-only).</li>
+<li><b>Bulk driving force</b> (<code>liquidDrive bulk</code>, the default with Newman). Newman&rsquo;s Sh is referred to the bulk
+concentration; the interface-cell value used by the fixed/Higbie closures would double-count the depletion.</li>
+<li><b>Liquid sink over the whole drop</b> (<code>donorSink drop</code> in the <code>alpha.gas</code> controls of
+<code>fvSolution</code>). The face-based mapping puts the liquid sink in the liquid cells next to the interface and has no capacity limit on
+the donor side. With the Newman flux these cells would empty long before the drop (the real depleted layer is a few &micro;m, the cells
+16&ndash;30 &micro;m). With <code>drop</code>, each drop&rsquo;s accepted sink is redistributed over its cells in proportion to their xenon
+mass &rho;ZV, i.e. a uniform fractional loss: the CFD drop stays well mixed, as the subgrid closure assumes, and Y cannot go negative.
+The gas side and the receiver capacity limiter are unchanged.</li>
+<li><b>Drop halo</b> (<code>dropHaloLayers 3</code>). The drop clusters contain cells with &alpha; &gt; 0.5 plus interface cells; the smeared liquid
+around them (&alpha; &lt; 0.05, fed continuously by the parasitic currents) belonged to no drop, so it neither aged nor lost xenon. In the first V-N2
+run this halo was 1.5 % of the liquid but held 4.4 % of the xenon at 1.5 ms (Y 3.1&times; the drop value, age one third of the drop age) and
+caused a 3.5 % error. The option attaches the dispersed phase within N face layers of a drop to that drop (parallel-consistent); the remaining
+unattached fraction is printed as <code>orphanFrac</code> (&le; 4&times;10<sup>&minus;4</sup> with N = 3 in V-N2). With <code>liquidDrive bulk</code>
+the drop mean includes all its liquid, not only &alpha; &gt; <code>alphaLiqSampleMin</code>.</li>
+</ul>
+<p>The model stops with an error if Newman is selected without <code>contactAge</code>, or if the dispersed phase is not the donor
+(bubbles). Cells of liquid not in an identified drop keep the fixed <code>liquidSherwood</code>.</p>
 
 <h3>3.2 Contact time for single drops, series, re-entry and splashing</h3>
 <p>The target applications (a series of droplets, the same droplet re-entering the domain after leaving it, splashing on an inclined
@@ -609,8 +655,8 @@ This renewal rule is a modelling hypothesis and must be validated, not only veri
 <li>The source stays explicit: &beta;&Delta;t = 6Sh D<sub>&#8467;</sub>&Delta;t/d&sup2; &lt; 10<sup>&minus;3</sup> even at Fo = 10<sup>&minus;6</sup>.</li>
 <li>Per-drop quantities need global reductions; for droplet series the ~20 scalar reductions per drop per step should be merged into a
 single list reduction.</li>
-<li>Sh(Fo) is singular as Fo &rarr; 0; the first step after release should use the time-averaged coefficient over the step,
-k&#772; = (F(&theta;+&Delta;t) &minus; F(&theta;))/(&Delta;t &middot; 3(1&minus;F(&theta;))/R), which is exact for the step.</li>
+<li>Sh(Fo) is singular as Fo &rarr; 0; Sh<sub>step</sub> of section 3.1 removes the singularity (first step after release:
+Sh = 682 for &Delta;t = 0.12 &micro;s in V-N2, removing exactly F(Fo<sub>1</sub>) = 1.1 %).</li>
 </ul>
 
 <h2>4. Verification</h2>
@@ -636,6 +682,48 @@ elapsed time exactly for the first steps and to within 0.4 % once the interface 
 cluster does not age); max(&theta;) equals t to round-off and min(&theta;) = 0, i.e. the transport is bounded.{STRETCH_NOTE}</p>
 <p>V2 is the central test: with g = 0 the Newman solution is exact for the CFD set-up, so any discrepancy is an implementation or
 geometry error. Before the Newman model, the same test with a fixed Sh already checks the geometry chain (section 5).</p>
+
+<h3>4.3 Results so far</h3>
+<p><b>V0 (passed).</b> <code>src/xenonTransfer/test/newmanSphere/Test-newmanSphere.C</code> compares <code>newmanSphere.H</code> with an
+independent 2&times;10<sup>5</sup>-term long-double series at 11 Fo values from 10<sup>&minus;6</sup> to 2, including both sides of the branch
+switch: relative errors &le; 1.9&times;10<sup>&minus;10</sup> in F and 1&minus;F, &le; 7&times;10<sup>&minus;9</sup> in Sh (largest at the switch).
+Sh<sub>step</sub> applied as forward-Euler steps (300 steps from Fo = 0) reproduces 1&minus;F to round-off (10<sup>&minus;15</sup>), as does
+the log-average Sh&#772; applied as exponential steps; this also covers V1.</p>
+<p><b>V-N2 (passed): falling drop, D<sub>&#8467;</sub> accelerated.</b> <code>run/xenonDroplet</code> on 8 ranks with Newman,
+<code>liquidDrive bulk</code>, <code>donorSink drop</code>, <code>dropHaloLayers 3</code>, and two changes so that the whole Newman curve fits in 1.5 ms of simulated time:
+D<sub>&#8467;</sub> &times; 1000 (2.006&times;10<sup>&minus;6</sup> m&sup2;/s, only in the closure; the resolved liquid diffusion keeps the nominal value)
+and Y<sub>0</sub> = 4&times;10<sup>&minus;8</sup>. The problem is linear in Y (Y<sub>eq</sub> &asymp; 0), so M/M<sub>0</sub> does not depend on
+Y<sub>0</sub>; the low value keeps the receiver capacity limiter from clipping the 1000&times; faster release. The comparison uses the volume-integrated
+liquid xenon (function object) against 1 &minus; F(4D<sub>&#8467;</sub>&theta;/d<sub>0</sub>&sup2;), with &theta; the drop age and d<sub>0</sub> the
+initial volume-equivalent diameter ({VN2_d0*1e3:.4f} mm). Script: <code>test/newmanSphere/checkNewmanCase.py</code>.</p>
+{table(["t (ms)", "&theta;/t", "Fo", "removed CFD (%)", "removed Newman (%)", "rel. error in M/M<sub>0</sub> (%)", "total Xe / M<sub>0</sub>"], vn2Rows)}
+<p style="font-size:8.6pt;color:#52514e">Table 7. V-N2, {len(VN2)} samples; maximum |relative error| in M/M<sub>0</sub> = {100*VN2_err.max():.2f} %.</p>
+<figure><img src="{fig4}"/><figcaption>Figure 4. V-N2: liquid xenon removed vs. Fo, CFD and Newman, and the relative error of the remaining inventory.</figcaption></figure>
+<p>Observations:</p>
+<ul>
+<li>The applied rate is exact step by step: the first step removes 1.1 %, as Newman does at the same Fo, and the drop interior stays uniform
+(core-cell Y equal to within 10<sup>&minus;3</sup>). The drop age equals the elapsed time to within
+{100*(1-VN2['theta'][-1]/VN2['t'][-1]):.2f} % (smeared liquid at the edge of the halo does not age).</li>
+<li>Two corrections were needed to get here, both found with this test. Without the drop halo (section 3.1) the error grew to 3.5 % at
+Fo = 0.135: smeared liquid outside the clusters kept its xenon. With the log-averaged Sh instead of Sh<sub>step</sub> the explicit update
+over-removed by 0.6 %.</li>
+<li>The drop-cluster inventory printed by the solver (<code>MxeDrop</code>) is <i>not</i> a valid measure of removal: it counts only the cells
+of the cluster above <code>alphaLiqSampleMin</code>. Use the volume integral of the liquid xenon.</li>
+<li>Total xenon (liquid + gas) is constant to 10<sup>&minus;6</sup> up to 0.36 ms and ends at {VN2['Mtot_M0'][-1]:.6f} M<sub>0</sub>: the
+3&times;10<sup>&minus;5</sup> is gas-phase xenon carried out through the open top and bottom by the helium the drop displaces (it is the boundary
+term of the gas budget; between-step changes are zero in both phases and the liquid budget closes to 10<sup>&minus;10</sup>). An earlier version of the case created 0.1 % of M<sub>0</sub> in the gas: its
+<code>incompressiblePerfectGas</code> equation of state made &rho;<sub>g</sub> depend on the mixture molar mass (Xe 135, He 4), while the Z
+equations carry no density. The gas now uses <code>rhoConst</code> (helium at 920 K, 5 kPa) for both species, as in the thesis; the species
+budget then closes to 3&times;10<sup>&minus;12</sup> M<sub>0</sub>. The consequence is that xenon does not change the gas density, which is
+exact for dilute xenon only (next item).</li>
+<li>V-N2 does not test the nominal parameters: there the release is 1000&times; slower but Y<sub>0</sub> is 1000&times; larger, and the liquid holds
+&rho;<sub>&#8467;</sub>Y<sub>0</sub> &asymp; 0.17 kg/m&sup3; of xenon, 63&times; the helium density. Check that the gas-side capacity limiter does not clip
+the flux and how xenon-rich the gas next to the drop becomes. <b>Checked</b> (nominal D<sub>&#8467;</sub> and Y<sub>0</sub>, 0.3 ms): the liquid follows
+Newman to 4&times;10<sup>&minus;4</sup> and total xenon is conserved, but the gas next to the drop reaches a xenon mass fraction of 0.89 (about 15 %
+by moles) and the receiver capacity limiter clips up to 6 % of the flux in single steps. Constant gas density and the gas-side limiter assume dilute
+xenon, so at this Y<sub>0</sub> the gas side is outside the model: either a realistic (lower) Y<sub>0</sub> is used, which is equivalent because the
+liquid problem is linear in Y, or the gas needs a composition-dependent density with a density-weighted species equation.</li>
+</ul>
 
 <h2>5. Geometry and slip fixes already applied (for reference)</h2>
 <p>Measured on <code>run/xenonDroplet</code> with the original code (Sh = 2):</p>

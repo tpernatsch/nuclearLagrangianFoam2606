@@ -61,6 +61,7 @@ massTransferModel
         // ---------------- Bubble tracking ----------------
         alphaClusterCut 0.5;
         minDropCells    4;
+        dropHaloLayers  3;            // attach the smeared liquid around each drop to it
 
         // ---------------- Diagnostics ----------------
         debugDeff       true;
@@ -78,8 +79,9 @@ massTransferModel
         gasSherwoodModel      RanzMarshall;
         gasSherwood           2;
 
-        liquidSherwoodModel   fixed;
-        liquidSherwood        2; // for thesis I tested different values from 2 up to 100
+        liquidSherwoodModel   Newman;   // stagnant drop, Sh(Fo) from contactAge (thesis: fixed)
+        liquidSherwood        2;        // fixed value (thesis 2-100); Newman: off-drop liquid only
+        // liquidDrive bulk is the default with Newman
 
         muGas           4.6913e-05;
 

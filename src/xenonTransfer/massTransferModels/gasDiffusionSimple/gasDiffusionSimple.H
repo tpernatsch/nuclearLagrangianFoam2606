@@ -27,6 +27,7 @@
     alphaHi                 0.95;
     alphaClusterCut         0.5;
     minDropCells            4;
+    dropHaloLayers          0;             // attach smeared dispersed phase within N face layers to its drop
 
     debugDeff               true;
     debugDrops              true;
@@ -40,8 +41,9 @@
 
     gasSherwoodModel        RanzMarshall;
     gasSherwood             2;
-    liquidSherwoodModel     Higbie;
-    liquidSherwood          2;
+    liquidSherwoodModel     Higbie;        // fixed | Higbie | Newman
+    liquidSherwood          2;             // fixed value / lower bound
+    liquidDrive             interface;     // interface | bulk (default bulk for Newman)
 
     dpMode                  perDropVA;     // fixed | globalVA | perDropVA | perDropVol
     dp                      3.0e-4;
@@ -63,6 +65,15 @@ flux, so it follows drops through series, breakup and mapped re-entry:
 s (surfaceRenewal stretching) is the per-drop interface stretching rate
 max(0, int(div_s U) dA / A): new interface is fresh, so the mean surface age
 drops. Inflow takes the patch value of theta (0 unless set, e.g. mapped).
+
+liquidSherwoodModel Newman (needs contactAge, liquid drops in gas): stagnant
+drop with zero surface concentration (Newman 1931, Crank eq. 6.20). The
+bulk-referred Sh is taken over the step, [theta - dt, theta], with
+Fo = 4 Dliq theta/dp^2, so the explicit source removes exactly the Newman
+fraction of the step (newmanSphere::ShStep).
+It is referred to the drop bulk, so use liquidDrive bulk; set donorSink drop
+in the alpha.<gas> controls so the depletion layer stays sub-grid, and
+dropHaloLayers (3) so smeared liquid around the drop ages and is depleted.
 */
 
 #ifndef Foam_meltingEvaporationModels_gasDiffusionSimple_H
@@ -92,6 +103,7 @@ class gasDiffusionSimple
         scalar alphaHi_;
         scalar alphaClusterCut_;
         label minDropCells_;
+        label dropHaloLayers_;
 
         word dispersedPhaseName_;      
         scalar geometryVolumeFactor_;
@@ -114,6 +126,9 @@ class gasDiffusionSimple
     // Liquid-side Sherwood closure
     word liquidSherwoodModel_;
     scalar liquidSherwood_;
+
+    // Liquid concentration in the driving force: interface (sampled) or bulk (drop mean)
+    word liquidDrive_;
 
     // Gas viscosity, only needed for gas-side Ranz-Marshall
     scalar muGas_;

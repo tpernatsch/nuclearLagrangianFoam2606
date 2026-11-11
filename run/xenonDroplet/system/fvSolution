@@ -65,6 +65,7 @@ solvers
 
         capToCell true;
         capacitySafetyFactor 0.5;
+        donorSink       drop;     // liquid sink over the whole drop (needed by Newman)
         YminCap   0;
         YmaxCap   1;
 

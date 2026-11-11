@@ -145,7 +145,8 @@ namespace
         Foam::reduce(nHigh, Foam::sumOp<Foam::label>());
         Foam::reduce(nLow, Foam::sumOp<Foam::label>());
 
-        if ((nHigh > 0 || nLow > 0) && Foam::mag(dMClamp) > ZboundMassTol)
+        // Redistribute any clamped mass (see syncAndSnapshotSpecies)
+        if (Foam::mag(dMClamp) > ZboundMassTol)
         {
             if (dMClamp < 0.0)
             {
@@ -895,7 +896,9 @@ void Foam::DiffusiveMassTransferPhaseSystem<BasePhaseSystem>::massSpeciesTransfe
             reduce(nHigh, sumOp<label>());
             reduce(nLow, sumOp<label>());
 
-            if ((nHigh > 0 || nLow > 0) && mag(dMClamp) > ZboundMassTol)
+            // Redistribute any clamped mass: an absolute 1e-12 Z threshold
+            // missed small undershoots and created mass at low Y
+            if (mag(dMClamp) > ZboundMassTol)
             {
                 if (dMClamp < 0.0)
                 {
@@ -2007,6 +2010,84 @@ void Foam::DiffusiveMassTransferPhaseSystem<BasePhaseSystem>::massSpeciesTransfe
                     const scalar mdotFace   = mdotCell/scalar(nf);
 
                     mdotFromAccepted[ownCell] += mdotFace*scaleN[fi];
+                }
+            }
+
+            // donorSink drop: spread each drop's accepted donor sink over the
+            // drop in proportion to its species mass (uniform fractional loss),
+            // for bulk-referred closures whose depletion layer is sub-grid
+            const word donorSink =
+                alphaControls.getOrDefault<word>("donorSink", "interface");
+
+            if (donorSink != "interface" && donorSink != "drop")
+            {
+                FatalErrorInFunction
+                    << "Unsupported donorSink '" << donorSink << "' in "
+                    << alphaControlsName << ". Valid choices are interface | drop"
+                    << exit(FatalError);
+            }
+
+            const volScalarField* dropIdPtr =
+                mesh.findObject<volScalarField>("dropId");
+
+            const word zDonorKey = snapshotKey("Z", target, pair.from().name());
+
+            if
+            (
+                phaseIsFrom
+             && donorSink == "drop"
+             && dropIdPtr
+             && mtCapZSnapshot.found(zDonorKey)
+            )
+            {
+                const scalarField& id = *dropIdPtr;
+                const scalarField& Zd = mtCapZSnapshot[zDonorKey];
+
+                const label nD = max(label(gMax(id)) + 1, label(0));
+
+                scalarList Sdrop(nD, 0.0);   // accepted sink [kg/s]
+                scalarList Mdrop(nD, 0.0);   // species mass [kg]
+
+                forAll(id, c)
+                {
+                    const label j = label(id[c]);
+                    if (j < 0) continue;
+
+                    Sdrop[j] += mdotFromAccepted[c];
+
+                    if (alphaFrom[c] > alphaSpeciesCut)
+                    {
+                        Mdrop[j] += rhoP[c]*max(Zd[c], scalar(0))*V[c];
+                    }
+                }
+
+                for (label j = 0; j < nD; ++j)
+                {
+                    reduce(Sdrop[j], sumOp<scalar>());
+                    reduce(Mdrop[j], sumOp<scalar>());
+                }
+
+                forAll(id, c)
+                {
+                    const label j = label(id[c]);
+                    if (j < 0 || Mdrop[j] <= VSMALL) continue;
+
+                    mdotFromAccepted[c] =
+                        (alphaFrom[c] > alphaSpeciesCut)
+                      ? Sdrop[j]*rhoP[c]*max(Zd[c], scalar(0))*V[c]/Mdrop[j]
+                      : 0.0;
+                }
+
+                if (dbg)
+                {
+                    for (label j = 0; j < nD; ++j)
+                    {
+                        Info<< "MT DONOR DROP " << j
+                            << " sink=" << Sdrop[j]
+                            << " mass=" << Mdrop[j]
+                            << " rate=" << Sdrop[j]/max(Mdrop[j], VSMALL)
+                            << nl;
+                    }
                 }
             }
 

@@ -12,6 +12,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "gasDiffusionSimple.H"
+#include "newmanSphere.H"
 
 #include "constants.H"
 #include "cutCellIso.H"
@@ -25,6 +26,7 @@
 #include "PstreamReduceOps.H"
 
 #include "regionSplit.H"
+#include "syncTools.H"
 #include "Pstream.H"
 
 using namespace Foam::constant;
@@ -71,6 +73,7 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>
     alphaHi_(dict.getOrDefault<scalar>("alphaHi", 0.95)),
     alphaClusterCut_(dict.getOrDefault<scalar>("alphaClusterCut", 0.5)),
     minDropCells_(dict.getOrDefault<label>("minDropCells", 2)),
+    dropHaloLayers_(max(dict.getOrDefault<label>("dropHaloLayers", 0), label(0))),
 
     dispersedPhaseName_
     (
@@ -135,6 +138,15 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>
         (
             "liquidSherwood",
             dict.getOrDefault<scalar>("ShLiquid", 2.0)
+        )
+    ),
+
+    liquidDrive_
+    (
+        dict.getOrDefault<word>
+        (
+            "liquidDrive",
+            liquidSherwoodModel_ == "Newman" ? "bulk" : "interface"
         )
     ),
 
@@ -301,11 +313,40 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>
     (
         liquidSherwoodModel_ != "fixed"
     && liquidSherwoodModel_ != "Higbie"
+    && liquidSherwoodModel_ != "Newman"
     )
     {
         FatalIOErrorInFunction(dict)
             << "Unsupported liquidSherwoodModel '" << liquidSherwoodModel_
-            << "'. Valid choices are fixed | Higbie"
+            << "'. Valid choices are fixed | Higbie | Newman"
+            << exit(FatalIOError);
+    }
+
+    if (liquidDrive_ != "interface" && liquidDrive_ != "bulk")
+    {
+        FatalIOErrorInFunction(dict)
+            << "Unsupported liquidDrive '" << liquidDrive_
+            << "'. Valid choices are interface | bulk"
+            << exit(FatalIOError);
+    }
+
+    if (liquidSherwoodModel_ == "Newman" && !contactAge_)
+    {
+        FatalIOErrorInFunction(dict)
+            << "liquidSherwoodModel Newman needs contactAge true"
+            << exit(FatalIOError);
+    }
+
+    if
+    (
+        (liquidSherwoodModel_ == "Newman" || liquidDrive_ == "bulk")
+     && dispersedPhaseName_ != this->pair().from().name()
+    )
+    {
+        FatalIOErrorInFunction(dict)
+            << "liquidSherwoodModel Newman and liquidDrive bulk need the"
+            << " dispersed phase to be the donor (liquid drops), got "
+            << dispersedPhaseName_
             << exit(FatalIOError);
     }
 
@@ -1095,6 +1136,65 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
         }
     }
 
+    // Attach the smeared dispersed-phase halo (alpha below the cluster cut,
+    // no interface) to the neighbouring drop, one face layer per pass
+    for (label layer = 0; layer < dropHaloLayers_; ++layer)
+    {
+        labelList newId(dropId);
+        scalarField bestA(mesh.nCells(), -GREAT);
+
+        auto offer = [&](const label c, const label j, const scalar a)
+        {
+            if (j < 0 || dropId[c] >= 0 || alphaDisp[c] <= alphaBandMin_) return;
+            if (a > bestA[c])
+            {
+                bestA[c] = a;
+                newId[c] = j;
+            }
+        };
+
+        const labelUList& own = mesh.owner();
+        const labelUList& nei = mesh.neighbour();
+
+        forAll(nei, facei)
+        {
+            offer(own[facei], dropId[nei[facei]], alphaDisp[nei[facei]]);
+            offer(nei[facei], dropId[own[facei]], alphaDisp[own[facei]]);
+        }
+
+        labelList nbrId;
+        scalarField nbrA;
+        syncTools::swapBoundaryCellList(mesh, dropId, nbrId);
+        syncTools::swapBoundaryCellList(mesh, alphaDisp.primitiveField(), nbrA);
+
+        const labelUList& faceOwn = mesh.faceOwner();
+
+        forAll(nbrId, bFacei)
+        {
+            const label facei = mesh.nInternalFaces() + bFacei;
+            offer(faceOwn[facei], nbrId[bFacei], nbrA[bFacei]);
+        }
+
+        dropId.transfer(newId);
+    }
+
+    // Dispersed phase in no drop (no sink, no ageing): diagnostic
+    scalar orphanFrac = 0;
+    {
+        scalar Vorph = 0, Vall = 0;
+
+        forAll(dropId, celli)
+        {
+            const scalar w = max(alphaDisp[celli], scalar(0))*mesh.V()[celli];
+            Vall += w;
+            if (dropId[celli] < 0 && alphaDisp[celli] > alphaBandMin_) Vorph += w;
+        }
+
+        reduce(Vorph, sumOp<scalar>());
+        reduce(Vall, sumOp<scalar>());
+        orphanFrac = Vorph/max(Vall, VSMALL);
+    }
+
     // Droplet statistics
     scalarList dropV(nDrops, 0.0);        // old assigned volume, for Dvol comparison
     scalarList dropVarea(nDrops, 0.0);    // area-consistent volume, for dp = 6V/A
@@ -1195,7 +1295,11 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
         {
             const scalar aL = max(alphaLiqY[celli], scalar(0));
 
-            if (aL > alphaLiqSampleMin)
+            // Bulk drive: mean over all the drop liquid (mass-weighted)
+            const scalar aBulkMin =
+                (liquidDrive_ == "bulk") ? alphaBandMin_ : alphaLiqSampleMin;
+
+            if (aL > aBulkMin)
             {
                 scalar YbulkCell = clamp01(Y_liq[celli]);
 
@@ -1751,6 +1855,43 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
         }
     }
 
+    // Newman stagnant-drop Sh over the step [theta - dt, theta], chosen so the
+    // explicit source removes exactly the Newman fraction of the step
+    if (liquidSherwoodModel_ == "Newman")
+    {
+        const scalar dt = mesh.time().deltaTValue();
+
+        for (label j = 0; j < nDrops; ++j)
+        {
+            const scalar dpEval =
+                (dpMode_ == "fixed" && dp_ > SMALL) ? dp_ : dropDp[j];
+
+            if (dpEval <= SMALL || dropAge[j] <= 0)
+            {
+                dropShLiq[j] = liquidSherwood_;
+            }
+            else
+            {
+                const scalar c = 4*Dliq_/sqr(dpEval);
+
+                dropShLiq[j] =
+                    newmanSphere::ShStep
+                    (
+                        c*max(dropAge[j] - dt, scalar(0)),
+                        c*dropAge[j]
+                    );
+            }
+
+            if (dpEval > SMALL)
+            {
+                dropKLiq[j] = dropShLiq[j]*Dliq_/dpEval;
+
+                dropKoverall[j] =
+                    1.0/(1.0/max(dropKLiq[j], SMALL) + k_/max(dropKg[j], SMALL));
+            }
+        }
+    }
+
     // 4) Global fallback geometry + assemble mDotc
     scalar dpGeomGlobal = max(dp_, SMALL);
 
@@ -1929,6 +2070,14 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
         YliqCell /= wLiqPts;
         rholCell /= wLiqPts;
 
+        const label j = dropId[celli];
+
+        // Bulk-referred closures (Newman) drive with the drop-mean Y
+        if (liquidDrive_ == "bulk" && j >= 0 && dropBulkWeight[j] > SMALL)
+        {
+            YliqCell = dropYbulkInt[j]/dropBulkWeight[j];
+        }
+
         YliqCell = clamp01(YliqCell);
         rholCell = max(rholCell, SMALL);
 
@@ -1938,8 +2087,6 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
         scalar YeqCell = k_*(rhogCell/rholCell)*YgCell;
 
         YeqCell = clamp01(YeqCell);
-
-        const label j = dropId[celli];
 
         scalar dpCell = dpGeomGlobal;
 
@@ -1963,6 +2110,12 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
                 ShGasCell = dropShGas[j];
                 ShLiqCell = dropShLiq[j];
             }
+        }
+
+        // Newman is a per-drop (age) closure for any dpMode
+        if (liquidSherwoodModel_ == "Newman" && j >= 0)
+        {
+            ShLiqCell = dropShLiq[j];
         }
 
         // Gas-side coefficient from gas-side Ranz-Marshall
@@ -2153,6 +2306,7 @@ Foam::meltingEvaporationModels::gasDiffusionSimple<Thermo, OtherThermo>::Kexp
         Info<< "gasDiffusionSimple:"
             << " dispersedPhase=" << dispersedPhaseName_
             << " nDrops=" << nDrops
+            << " orphanFrac=" << orphanFrac
             << " dpMode=" << dpMode_
             << " dpGlobal=" << dpGeomGlobal
             << " mDotcIntegral=" << mDotIntegral
