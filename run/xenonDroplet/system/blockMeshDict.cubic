@@ -1,0 +1,60 @@
+FoamFile { version 2.0; format ascii; class dictionary; object blockMeshDict; }
+
+// Cubic-core variant: uniform cubic cells dx in the core |x|,|y| < xi and
+// over the full height; 5 graded cells (ratio 3) out to the side walls
+scale   1e-3;
+
+dx  0.015;  // core cell size (0.3 mm drop: ~20 cells per diameter)
+xo  0.45;   // half width
+xi  0.30;   // core half width (inlet extent)
+H   5;      // height
+
+nC  #eval{ round(2*$xi/$dx) };
+nZ  #eval{ round($H/$dx) };
+nO  5;
+
+vertices
+(
+    (-$xo -$xo 0) (-$xi -$xo 0) ($xi -$xo 0) ($xo -$xo 0)
+    (-$xo -$xi 0) (-$xi -$xi 0) ($xi -$xi 0) ($xo -$xi 0)
+    (-$xo  $xi 0) (-$xi  $xi 0) ($xi  $xi 0) ($xo  $xi 0)
+    (-$xo  $xo 0) (-$xi  $xo 0) ($xi  $xo 0) ($xo  $xo 0)
+
+    (-$xo -$xo $H) (-$xi -$xo $H) ($xi -$xo $H) ($xo -$xo $H)
+    (-$xo -$xi $H) (-$xi -$xi $H) ($xi -$xi $H) ($xo -$xi $H)
+    (-$xo  $xi $H) (-$xi  $xi $H) ($xi  $xi $H) ($xo  $xi $H)
+    (-$xo  $xo $H) (-$xi  $xo $H) ($xi  $xo $H) ($xo  $xo $H)
+);
+
+lo  0.333333;   // outer blocks, coarsening away from the core
+hi  3;
+
+blocks
+(
+    hex ( 0  1  5  4 16 17 21 20) ($nO $nO $nZ) simpleGrading ($lo $lo 1)
+    hex ( 1  2  6  5 17 18 22 21) ($nC $nO $nZ) simpleGrading (1 $lo 1)
+    hex ( 2  3  7  6 18 19 23 22) ($nO $nO $nZ) simpleGrading ($hi $lo 1)
+    hex ( 4  5  9  8 20 21 25 24) ($nO $nC $nZ) simpleGrading ($lo 1 1)
+    hex ( 5  6 10  9 21 22 26 25) ($nC $nC $nZ) simpleGrading (1 1 1)
+    hex ( 6  7 11 10 22 23 27 26) ($nO $nC $nZ) simpleGrading ($hi 1 1)
+    hex ( 8  9 13 12 24 25 29 28) ($nO $nO $nZ) simpleGrading ($lo $hi 1)
+    hex ( 9 10 14 13 25 26 30 29) ($nC $nO $nZ) simpleGrading (1 $hi 1)
+    hex (10 11 15 14 26 27 31 30) ($nO $nO $nZ) simpleGrading ($hi $hi 1)
+);
+
+boundary
+(
+    inlet  { type patch; faces ((21 22 26 25)); }
+    outlet
+    {
+        type patch;
+        faces
+        (
+            (0 4 5 1) (1 5 6 2) (2 6 7 3)
+            (4 8 9 5) (5 9 10 6) (6 10 11 7)
+            (8 12 13 9) (9 13 14 10) (10 14 15 11)
+        );
+    }
+);
+
+defaultPatch { name walls; type wall; }

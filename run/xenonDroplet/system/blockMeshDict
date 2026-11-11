@@ -1,0 +1,58 @@
+FoamFile { version 2.0; format ascii; class dictionary; object blockMeshDict; }
+
+// Thesis droplet mesh (E. Tiso), 30 x 30 x 200 hex cells; reproduces the
+// original polyMesh to its 3e-8 m point noise. Cubic variant: blockMeshDict.cubic
+scale   1e-3;
+
+xo 0.45;    // half width
+xi 0.30;    // half width of the graded core (inlet extent)
+H  5;       // height
+
+vertices
+(
+    (-$xo -$xo 0) (-$xi -$xo 0) ($xi -$xo 0) ($xo -$xo 0)
+    (-$xo -$xi 0) (-$xi -$xi 0) ($xi -$xi 0) ($xo -$xi 0)
+    (-$xo  $xi 0) (-$xi  $xi 0) ($xi  $xi 0) ($xo  $xi 0)
+    (-$xo  $xo 0) (-$xi  $xo 0) ($xi  $xo 0) ($xo  $xo 0)
+
+    (-$xo -$xo $H) (-$xi -$xo $H) ($xi -$xo $H) ($xo -$xo $H)
+    (-$xo -$xi $H) (-$xi -$xi $H) ($xi -$xi $H) ($xo -$xi $H)
+    (-$xo  $xi $H) (-$xi  $xi $H) ($xi  $xi $H) ($xo  $xi $H)
+    (-$xo  $xo $H) (-$xi  $xo $H) ($xi  $xo $H) ($xo  $xo $H)
+);
+
+// Outer: 90 um then 60 um; core: 13 + 13 cells, 31.9 -> 15.9 um -> 31.9
+lo  ((1 2 0.666667));
+hi  ((1 2 1.5));
+cor ((0.5 13 0.5) (0.5 13 2));
+
+blocks
+(
+    hex ( 0  1  5  4 16 17 21 20) (2 2 200)   simpleGrading ($lo $lo 1)
+    hex ( 1  2  6  5 17 18 22 21) (26 2 200)  simpleGrading ($cor $lo 1)
+    hex ( 2  3  7  6 18 19 23 22) (2 2 200)   simpleGrading ($hi $lo 1)
+    hex ( 4  5  9  8 20 21 25 24) (2 26 200)  simpleGrading ($lo $cor 1)
+    hex ( 5  6 10  9 21 22 26 25) (26 26 200) simpleGrading ($cor $cor 1)
+    hex ( 6  7 11 10 22 23 27 26) (2 26 200)  simpleGrading ($hi $cor 1)
+    hex ( 8  9 13 12 24 25 29 28) (2 2 200)   simpleGrading ($lo $hi 1)
+    hex ( 9 10 14 13 25 26 30 29) (26 2 200)  simpleGrading ($cor $hi 1)
+    hex (10 11 15 14 26 27 31 30) (2 2 200)   simpleGrading ($hi $hi 1)
+);
+
+boundary
+(
+    inlet  { type patch; faces ((21 22 26 25)); }
+    outlet
+    {
+        type patch;
+        faces
+        (
+            (0 4 5 1) (1 5 6 2) (2 6 7 3)
+            (4 8 9 5) (5 9 10 6) (6 10 11 7)
+            (8 12 13 9) (9 13 14 10) (10 14 15 11)
+        );
+    }
+    walls  { type wall; faces (); }   // all remaining faces
+);
+
+defaultPatch { name walls; type wall; }

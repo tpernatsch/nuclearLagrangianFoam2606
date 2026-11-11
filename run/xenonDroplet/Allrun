@@ -4,21 +4,33 @@ cd "${0%/*}" || exit                                # Run from this directory
 #------------------------------------------------------------------------------
 # Falling molten-salt droplet releasing xenon into helium (xenonTransferInterFoam).
 # Needs the repo environment: source etc/sourceme.sh from the repository root.
+# Options: -cubic (cubic-core mesh, system/blockMeshDict.cubic), -serial
 
-# Mesh is kept in mesh/polyMesh (gzipped) because cleanCase wipes constant/polyMesh
-rm -rf constant/polyMesh
-cp -r mesh/polyMesh constant/
+meshDict=system/blockMeshDict
+parallel=true
+
+for arg in "$@"
+do
+    case "$arg" in
+        -cubic)  meshDict=system/blockMeshDict.cubic ;;
+        -serial) parallel=false ;;
+        *) echo "Unknown option $arg (use -cubic, -serial)"; exit 1 ;;
+    esac
+done
+
+runApplication blockMesh -dict "$meshDict"
+runApplication checkMesh
 
 restore0Dir
 runApplication setFields
 
-if [ "$1" = "-serial" ]
+if [ "$parallel" = true ]
 then
-    runApplication $(getApplication)
-else
     runApplication decomposePar
     runParallel $(getApplication)
     runApplication reconstructPar -newTimes
+else
+    runApplication $(getApplication)
 fi
 
 #------------------------------------------------------------------------------
