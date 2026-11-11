@@ -248,6 +248,18 @@ PARTICLES = dict(
     particle=dict(rho0=10980.0, T0=883.0, Cp0=296.0, kappa0=115.0, mu0=None),
 )
 
+# Eulerian counterpart of the cloud (particleConcentrationFoam, applications/solvers/particleConcentrationFoam; build
+# it with wmake where the case runs). Allrun copies the final U, phi, T into eulerian/ after the Lagrangian stage and
+# solves, per size, the steady Brownian-diffusion concentration: walls N = 0 (as 'stick'), uniform source (as the
+# stickReplace re-injection), D as the BrownianMotion force, mu as the parcels (PARTICLES carrier_mu_T). Results:
+# eulerian/postProcessing/depositionVelocity.dat and the wall fluxes J_<label>.
+EULERIAN = dict(
+    enabled=True,
+    max_diameter=1e-7,      # [m] the PARTICLES sizes up to this (no settling, inertia or lift in the model)
+    tolerance=1e-8,         # steady when the largest relative change of N per iteration and the residual are below
+    max_iterations=20000,
+)
+
 # ----------------------------------------------------------------------------- probes
 # Points at angle 0 (x axis): every radius x every height. Radii outside the liquid are dropped.
 # None -> automatic: mid-gap (A) or axis + mid-radius + near wall (B).

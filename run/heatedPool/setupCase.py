@@ -706,6 +706,10 @@ def checks(cfg, d):
         if pp.get("injection") == "cellZone" and (pp.get("release_duration", 0) or 0) > 0:
             w.append("PARTICLES injection 'cellZone': cellZoneInjection releases all parcels at SOI "
                      "(release_duration is ignored); the number per size is ~n_per_injection (rounded per cell)")
+        eu = getattr(cfg, "EULERIAN", {}) or {}
+        if eu.get("enabled") and "transient" in stages(cfg) and not eulerian_on(cfg):
+            w.append("EULERIAN enabled but not written: needs PARTICLES walls 'stick' and a diameter up to "
+                     f"EULERIAN max_diameter = {eu.get('max_diameter', 1e-7):g} m")
         if pp.get("brownian", "BoundedBrownianMotion") == "BoundedBrownianMotion":
             w.append("BoundedBrownianMotion: for dt >> tauP the parcel diffusivity is dt/(2 tauP) x Stokes-Einstein "
                      "(and sub-100 nm parcels get ~thermal speed -> very slow); stock 'BrownianMotion' is exact there "
@@ -1309,6 +1313,187 @@ boundaryField
 {bf(lambda p: "type            greyDiffusiveRadiation;   // emissivity from boundaryRadiationProperties" + chr(10) + "value           $internalField;")}
 }}
 """, cls="volScalarField", obj="IDefault")
+
+
+# ============================================================================= Eulerian counterpart
+PREP_FLOW = r'''#!/usr/bin/env python3
+"""Copy the flow (U, phi, T) of time <src> of the Lagrangian case into eulerian/0. The T boundary conditions
+of the flow (cladding, coded, shell) are only needed for their values here: every T patch that has a value
+becomes 'calculated' with that value; patches without one (wedge, empty, ...) are kept as they are."""
+import os, re, shutil, sys
+
+
+def skip_code(s, i):
+    # at '#{': index after the matching '#}'
+    j = s.find("#}", i + 2)
+    if j < 0:
+        raise SystemExit("unterminated #{ code block")
+    return j + 2
+
+
+def block_end(s, i):
+    # s[i] == '{': index of the matching '}' (code blocks #{ #}, strings and comments skipped)
+    depth = 0
+    n = len(s)
+    while i < n:
+        if s.startswith("#{", i):
+            i = skip_code(s, i); continue
+        if s.startswith("//", i):
+            i = s.find("\n", i); i = n if i < 0 else i; continue
+        if s.startswith("/*", i):
+            i = s.find("*/", i) + 2; continue
+        c = s[i]
+        if c == '"':
+            i = s.find('"', i + 1) + 1; continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    raise SystemExit("unbalanced braces")
+
+
+def top_entries(body):
+    # top-level 'keyword value;' statements and 'name { ... }' sub-dictionaries of a dictionary body
+    out, i, n = [], 0, len(body)
+    while i < n:
+        m = re.compile(r"\s*(?://[^\n]*\n\s*)*(\"[^\"]*\"|[^\s{};]+)").match(body, i)
+        if not m or m.end() <= i:
+            break
+        key, j = m.group(1), m.end()
+        k = j
+        while k < n and body[k] in " \t\n":
+            k += 1
+        if k < n and body[k] == "{":
+            e = block_end(body, k)
+            out.append((key, body[k + 1:e], True)); i = e + 1
+            continue
+        # statement up to ';' outside parentheses, braces and code blocks
+        depth, k = 0, j
+        while k < n:
+            if body.startswith("#{", k):
+                k = skip_code(body, k); continue
+            c = body[k]
+            if c in "({":
+                depth += 1
+            elif c in ")}":
+                depth -= 1
+            elif c == ";" and depth == 0:
+                break
+            k += 1
+        out.append((key, body[j:k].strip(), False)); i = k + 1
+    return out
+
+
+def calculated_T(txt):
+    i = txt.index("boundaryField")
+    a = txt.index("{", i); b = block_end(txt, a)
+    patches = []
+    for name, body, isdict in top_entries(txt[a + 1:b]):
+        if not isdict:
+            continue
+        st = {k: v for k, v, d in top_entries(body) if not d}
+        if "value" in st:
+            patches.append(f"    {name}\n    {{\n        type            calculated;\n        value           {st['value']};\n    }}")
+            print(f"T {name}: {st.get('type', '?')} -> calculated")
+        else:
+            patches.append(f"    {name}\n    {{{body}}}")
+            print(f"T {name}: {st.get('type', '?')} kept")
+    return txt[:a] + "{\n" + "\n".join(patches) + "\n}" + txt[b + 1:]
+
+
+if __name__ == "__main__":
+    src = sys.argv[1]
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(here)
+    dst = os.path.join(here, "0")
+    for f in ("U", "phi"):
+        shutil.copy(os.path.join(root, src, f), os.path.join(dst, f))
+    txt = open(os.path.join(root, src, "T")).read()
+    open(os.path.join(dst, "T"), "w").write(calculated_T(txt))
+    for f in ("U", "phi", "T"):     # read as time 0
+        p = os.path.join(dst, f)
+        txt = open(p).read()        # read before open(p, "w") truncates it
+        open(p, "w").write(re.sub(r'(\n\s*location\s+)"[^"]*";', r'\1"0";', txt, count=1))
+    print(f"flow of time {src} copied into {dst}")
+'''
+
+
+def eulerian_sizes(cfg):
+    dmax = (getattr(cfg, "EULERIAN", {}) or {}).get("max_diameter", 1e-7)
+    return [x for x in cfg.PARTICLES["diameters"] if x <= dmax * (1 + 1e-9)]
+
+
+def eulerian_on(cfg):
+    """EULERIAN enabled, a cloud on the transient stage with sticky walls and at least one size in range."""
+    return (bool((getattr(cfg, "EULERIAN", {}) or {}).get("enabled")) and particles_on(cfg)
+            and cfg.PARTICLES.get("walls") == "stick" and bool(eulerian_sizes(cfg)))
+
+
+def size_label(x):
+    return "d" + (f"{x * 1e9:.4g}nm" if x < 1e-6 else f"{x * 1e6:.4g}um").replace(".", "p")
+
+
+def write_eulerian(c, cfg, d):
+    """eulerian/: the Eulerian counterpart of the cloud, solved by Allrun after the Lagrangian stage on its final
+    flow (particleConcentrationFoam, applications/solvers). Per PARTICLES size up to EULERIAN['max_diameter'], the
+    steady div(phi N) = laplacian(D N) + S with D = kB T Cc/(3 pi mu d) as the BrownianMotion force, N = 0 on the
+    cloud's sticky walls and a uniform S (stickReplaceInteraction re-injects volume-uniformly)."""
+    if not eulerian_on(cfg):
+        return
+    eu, pp = cfg.EULERIAN, cfg.PARTICLES
+    sizes = eulerian_sizes(cfg)
+    c.write("eulerian/constant/particleConcentrationProperties", f"""
+diameters   ({" ".join(f"{x:g}" for x in sizes)});    // [m] PARTICLES diameters up to EULERIAN max_diameter
+labels      ({" ".join(size_label(x) for x in sizes)});    // fields N_<label>, J_<label>, D_<label>
+viscosity   {"transport" if pp.get("carrier_mu_T", False) else "constant"};    // as the parcels (PARTICLES carrier_mu_T): rho nu(T) or mu(TRef)
+mu          {d['mu']:.6g};     // [Pa s], viscosity constant
+rho         {fmt(cfg.RHO)};    // [kg/m3], viscosity transport: mu = rho nu(T)
+lambda      {fmt(pp.get('brownian_lambda', 1e-12))};    // [m] Cunningham, as BrownianMotion
+source      1;          // [1/m3/s] uniform; v_d = flux/A/N_mean does not depend on it
+tolerance   {eu.get('tolerance', 1e-8):g};    // steady: largest relative change of N per iteration and residual below
+""")
+    sinks = "\n".join(f"    {p:<12}{{ type fixedValue; value uniform 0; }}" for p in fluid_patches(cfg))
+    c.write("eulerian/0/N", f"""
+dimensions      [0 -3 0 0 0 0 0];
+internalField   uniform 0;
+boundaryField
+{{
+    #includeEtc "caseDicts/setConstraintTypes"
+    // the cloud's sticky walls: perfect sinks (the reported deposition flux is -D dN/dn there)
+{sinks}
+}}
+""", cls="volScalarField", obj="N")
+    nit = int(eu.get("max_iterations", 20000))
+    c.write("eulerian/system/controlDict", f"""
+application     particleConcentrationFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         {nit};    // outer iterations (steadyState: deltaT 1 = one iteration)
+deltaT          1;
+writeControl    timeStep;
+writeInterval   {nit};    // it also writes when steady
+purgeWrite      0;
+writeFormat     ascii;
+writePrecision  10;
+runTimeModifiable false;
+""")
+    c.write("eulerian/system/fvSchemes", """
+ddtSchemes      { default steadyState; }
+gradSchemes     { default Gauss linear; }
+divSchemes      { default none; div(phi,N) Gauss linearUpwind grad(N); }
+laplacianSchemes { default Gauss linear corrected; }
+interpolationSchemes { default linear; }
+snGradSchemes   { default corrected; }
+""")
+    c.write("eulerian/system/fvSolution", """
+solvers { N { solver PBiCGStab; preconditioner DILU; tolerance 1e-14; relTol 0.01; } }
+relaxationFactors { equations { N 0.9; } }
+""")
+    c.write_raw("eulerian/prepareFlow", PREP_FLOW, executable=True)
 
 
 # ============================================================================= thin shell
@@ -2852,6 +3037,16 @@ for f in controlDict fvSchemes fvSolution; do cp system/$f.transient system/$f; 
 {fvo("transient")}{solve("transient")}
 {("runApplication -s transient reconstructPar " + ("-newTimes" if slurm else "-latestTime")) if par else ""}
 """
+    if eulerian_on(cfg):
+        body += """
+# ---- Eulerian counterpart on the final flow (eulerian/: particleConcentrationFoam, frozen U, phi, T)
+ln -sfn ../../constant/polyMesh eulerian/constant/polyMesh
+ln -sfn ../../constant/transportProperties eulerian/constant/transportProperties
+python3 eulerian/prepareFlow "$(foamListTimes -latestTime)" > eulerian/log.prepareFlow 2>&1 || { cat eulerian/log.prepareFlow; exit 1; }
+(cd eulerian && runApplication particleConcentrationFoam && touch foam.foam \\
+    && runApplication -s C postProcess -func writeCellCentres -latestTime \\
+    && runApplication -s V postProcess -func writeCellVolumes -latestTime)
+"""
     if slurm:
         body += "\ntouch foam.foam\n"
     body += "\n#------------------------------------------------------------------------------\n"
@@ -2860,6 +3055,9 @@ for f in controlDict fvSchemes fvSolution; do cp system/$f.transient system/$f; 
                if len(st) > 1 else "\n")
     if particles_on(cfg) and len(st) > 1:
         restore += "cp constant/fvOptions.steady constant/fvOptions\n"
+    if eulerian_on(cfg):
+        restore += ("(cd eulerian && rm -rf $(ls | grep -E '^[0-9.e+-]+$' | grep -vx 0) postProcessing log.* foam.foam "
+                    "0/U 0/phi 0/T constant/polyMesh constant/transportProperties)\n")
     c.write_raw("Allclean", f"""#!/bin/sh
 cd "${{0%/*}}" || exit
 . ${{WM_PROJECT_DIR:?}}/bin/tools/CleanFunctions
@@ -3010,6 +3208,10 @@ def write_summary(c, cfg, d, warnings, note):
            f"                    walls {cfg.PARTICLES['walls']}"
            + (", wedge faces elastic rebound (= 100 % recycling)" if is_wedge(cfg) else "")]
           if particles_on(cfg) else []),
+        *([f"Eulerian          : eulerian/ (particleConcentrationFoam after the Lagrangian run, final flow frozen), "
+           + ", ".join(size_label(x)[1:] for x in eulerian_sizes(cfg))
+           + f", mu {'rho nu(T)' if cfg.PARTICLES.get('carrier_mu_T', False) else 'mu(TRef)'}, walls N = 0, uniform source"]
+          if eulerian_on(cfg) else []),
         "",
         "Warnings:" if warnings else "Warnings: none",
     ] + [f"  - {w}" for w in warnings]
@@ -3380,6 +3582,7 @@ def main():
     write_constant(c, cfg, d)
     write_system(c, cfg, d)
     write_scripts(c, cfg, d)
+    write_eulerian(c, cfg, d)
     save_config(cfg, os.path.join(root, "caseSettings.py"), note)
     init = getattr(cfg, "INITIAL_FIELDS", None)
     if init:
