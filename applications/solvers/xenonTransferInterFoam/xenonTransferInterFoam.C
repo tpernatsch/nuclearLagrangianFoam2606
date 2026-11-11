@@ -54,6 +54,7 @@ Description
 #include "fvOptions.H"
 #include "radiationModel.H"
 #include "CorrectPhi.H"
+#include "surfaceTensionForce.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -96,6 +97,10 @@ int main(int argc, char *argv[])
     while (runTime.run())
     {
         #include "readDyMControls.H"
+
+        // Curvature smoothing passes (PIMPLE dict, 0 = stock CSF)
+        const label nCurvatureSmooth =
+            pimple.dict().getOrDefault<label>("nCurvatureSmooth", 0);
 
         #include "CourantNo.H"
         #include "alphaCourantNo.H"

@@ -30,7 +30,7 @@
     surfaceScalarField phig
     (
         (
-            fluid.surfaceTensionForce()
+            surfaceTensionForce(fluid, nCurvatureSmooth)
           - ghf*fvc::snGrad(rho)
         )*rAUf*mesh.magSf()
     );

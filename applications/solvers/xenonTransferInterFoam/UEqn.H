@@ -21,7 +21,7 @@ if (pimple.momentumPredictor())
         fvc::reconstruct
         (
             (
-                fluid.surfaceTensionForce()
+                surfaceTensionForce(fluid, nCurvatureSmooth)
                 - ghf*fvc::snGrad(rho)
                 - fvc::snGrad(p_rgh)
             ) * mesh.magSf()
