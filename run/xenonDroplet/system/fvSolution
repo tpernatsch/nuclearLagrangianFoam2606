@@ -141,6 +141,8 @@ PIMPLE
     pRefCell         0;
     pRefValue        5000;
 
+    nCurvatureSmooth 0;     // curvature from alpha smoothed N times (0 = stock CSF)
+
 }
 
 relaxationFactors

@@ -4,32 +4,48 @@ cd "${0%/*}" || exit                                # Run from this directory
 #------------------------------------------------------------------------------
 # Falling molten-salt droplet releasing xenon into helium (xenonTransferInterFoam).
 # Needs the repo environment: source etc/sourceme.sh from the repository root.
-# Options: -cubic (cubic-core mesh, system/blockMeshDict.cubic), -serial
+# Options: -cubic (cubic-core mesh, system/blockMeshDict.cubic), -serial,
+#          -init cells|smooth (setFields staircase or setAlphaField cut cells),
+#          -prepare (stop after decomposePar; the solver is started elsewhere)
 
 meshDict=system/blockMeshDict
 parallel=true
+init=cells
+prepare=false
 
-for arg in "$@"
+while [ "$#" -gt 0 ]
 do
-    case "$arg" in
-        -cubic)  meshDict=system/blockMeshDict.cubic ;;
-        -serial) parallel=false ;;
-        *) echo "Unknown option $arg (use -cubic, -serial)"; exit 1 ;;
+    case "$1" in
+        -cubic)   meshDict=system/blockMeshDict.cubic ;;
+        -serial)  parallel=false ;;
+        -init)    init="$2"; shift ;;
+        -prepare) prepare=true ;;
+        *) echo "Unknown option $1 (use -cubic, -serial, -init cells|smooth, -prepare)"; exit 1 ;;
     esac
+    shift
 done
 
 runApplication blockMesh -dict "$meshDict"
 runApplication checkMesh
 
 restore0Dir
-runApplication setFields
+case "$init" in
+    cells)  runApplication setFields ;;
+    smooth)
+        runApplication -s liquid setAlphaField
+        runApplication -s gas setAlphaField -dict system/setAlphaFieldDict.gas
+        runApplication setFields -dict system/setFieldsDict.species ;;
+    *) echo "Unknown init $init"; exit 1 ;;
+esac
 
 if [ "$parallel" = true ]
 then
     runApplication decomposePar
+    [ "$prepare" = true ] && exit 0
     runParallel $(getApplication)
     runApplication reconstructPar -newTimes
 else
+    [ "$prepare" = true ] && exit 0
     runApplication $(getApplication)
 fi
 

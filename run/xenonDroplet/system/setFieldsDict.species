@@ -1,0 +1,21 @@
+
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      setFieldsDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Liquid composition everywhere (Allrun -init smooth); Z = alpha*Y is zero in the gas
+defaultFieldValues
+(
+    volScalarFieldValue xenon.liquid 4e-8
+    volScalarFieldValue salt.liquid  0.99999996
+);
+
+regions ();
+
+// ************************************************************************* //
