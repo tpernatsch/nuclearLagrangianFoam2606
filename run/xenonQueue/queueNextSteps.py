@@ -1,5 +1,5 @@
 # Next xenon runs (runQueue.py), cheapest first. Wall times: measured cost on 6 local cores
-# (~1.4 s/step at 91k cells, ~3 s/step at 180-216k), cluster figures assume ~70 % parallel efficiency.
+# (~1.4 s/step at 91k cells, ~3 s/step at 180-216k); the 32/64-core figures assume ~70 % parallel efficiency.
 #
 #   static_*        verification V2 with the final settings          ~1 h local in total, ~20 min on 32 cores
 #   drop_thesis_*   falling drop to 15 ms, thesis mesh (180k cells)  2.5-6 h local each,  ~45 min-2 h on 32 cores

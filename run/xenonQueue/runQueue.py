@@ -2,9 +2,9 @@
 """Run a queue of xenonTransferInterFoam cases one after the other and record each run.
 
 Usage (OpenFOAM and repository environment sourced: <openfoam>/etc/bashrc, <repo>/etc/sourceme.sh):
+    ./runQueue.sh N <queue.py> [--only PATTERN ...]      in the background, survives logout (log: queue.log)
     python3 runQueue.py <queue.py> --np N [--only PATTERN ...] [--force] [--prepare-only]
     python3 runQueue.py <queue.py> --list
-    sbatch -n N [-t HH:MM:SS] runQueue.slurm <queue.py> [--only PATTERN ...]   (from this folder)
 
 The queue file defines RUNS, a list of dicts:
     name   run folder under RUNS_DIR (default: runs/ next to the queue file)
@@ -16,10 +16,10 @@ The queue file defines RUNS, a list of dicts:
 Every edit must match at least once, or the run fails before it starts.
 
 Each run: copy the template, apply the edits (plus numberOfSubdomains = N), Allrun -prepare (mesh, fields,
-decomposePar), the solver (srun under SLURM, mpirun otherwise; log appended), reconstructPar. The record is
+decomposePar), the solver (mpirun -np N, log appended; XENON_MPIRUN overrides the launcher), reconstructPar. The record is
 <run>/runInfo.json and one row of RUNS_DIR/summary.csv (rebuilt from all records after each run).
-Finished runs are skipped (--force reruns them). A run cut by the job time limit is resumed from its latest
-time (startFrom latestTime) when the queue is submitted again; the boundary outflow (XEOUT, static case) then
+Finished runs are skipped (--force reruns them). A run that was stopped (killed, machine rebooted) is resumed from its latest
+time (startFrom latestTime) when the queue is started again; the boundary outflow (XEOUT, static case) then
 counts the last segment only. A failed run is recorded and the queue goes on.
 """
 import argparse
@@ -274,7 +274,7 @@ def run_one(R, runs_dir, np_, force, prepare_only):
     resume = (not force and old.get("status") == "running" and (d / "processor0").is_dir()
               and old.get("np") == np_)
     info = dict(name=R["name"], case=R["case"], args=R.get("args", []), note=R.get("note", ""), np=np_,
-                host=socket.gethostname(), job=os.environ.get("SLURM_JOB_ID", ""), version=git_version(),
+                host=socket.gethostname(), version=git_version(),
                 started=old.get("started") if resume else now(), segments=old.get("segments", 0) + 1 if resume else 1,
                 edits=old.get("edits", []), status="preparing")
     t0 = time.time()
@@ -292,8 +292,7 @@ def run_one(R, runs_dir, np_, force, prepare_only):
             info["status"] = "prepared"
             return
         app = entry(d / "system" / "controlDict", "application")
-        launch = ("srun -n %d" % np_) if os.environ.get("SLURM_JOB_ID") else ("mpirun -np %d" % np_)
-        launch = os.environ.get("XENON_MPIRUN", launch)
+        launch = os.environ.get("XENON_MPIRUN", "mpirun") + " -np %d" % np_
         info["status"] = "running"
         record(d, info)
         print("[%s] %s: %s %s -parallel" % (R["name"], "resume" if resume else "run", launch, app), flush=True)
@@ -322,7 +321,7 @@ def run_one(R, runs_dir, np_, force, prepare_only):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("queue")
-    ap.add_argument("--np", type=int, default=int(os.environ.get("SLURM_NTASKS", "0") or 0))
+    ap.add_argument("--np", type=int, default=0, help="number of cores (MPI processes)")
     ap.add_argument("--only", nargs="*", default=None, help="run names or glob patterns")
     ap.add_argument("--force", action="store_true", help="rerun finished runs from scratch")
     ap.add_argument("--prepare-only", action="store_true", help="set up the runs (mesh, fields), no solver")
@@ -346,7 +345,7 @@ def main():
                   res.get("endTimeReached", "-"), R.get("note", "")))
         return
     if a.np < 2:
-        sys.exit("give --np N (N >= 2), or submit with sbatch -n N")
+        sys.exit("give the number of cores: --np N (N >= 2)")
     if os.environ.get("FOAM_USER_APPBIN"):
         os.environ["PATH"] = os.environ["FOAM_USER_APPBIN"] + os.pathsep + os.environ["PATH"]
     if "WM_PROJECT_DIR" not in os.environ or shutil.which("xenonTransferInterFoam") is None:

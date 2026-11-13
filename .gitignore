@@ -20,6 +20,7 @@ run/bubblyTube/cases/
 # generated heatedPool cases (recreate with run/heatedPool/setupCase.py)
 run/heatedPool/cases/
 
-# xenon run queue results and SLURM logs (run/xenonQueue/runQueue.py)
+# xenon run queue results and logs (run/xenonQueue/runQueue.py)
 run/xenonQueue/runs/
-run/xenonQueue/xenonQueue.*.out
+run/xenonQueue/queue.log
+run/xenonQueue/queue.pid
