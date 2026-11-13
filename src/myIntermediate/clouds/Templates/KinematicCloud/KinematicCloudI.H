@@ -374,14 +374,8 @@ Foam::KinematicCloud<CloudType>::totalDecayedParticles() const
 {
     scalar currentDecayedParticles = 0;
 
-    bool hasActiveParticles = false;
-
     for (const parcelType& p : *this)
     {
-        if (p.active())  // Assuming active() checks if the parcel is still in the simulation
-        {
-            hasActiveParticles = true;
-        }
         currentDecayedParticles += p.nParticlesDecayed();
     }
 

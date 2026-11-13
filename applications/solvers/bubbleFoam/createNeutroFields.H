@@ -13,9 +13,9 @@ IOdictionary nuclearProperties
     )
 );
 
-dimensionedScalar TrefXS(nuclearProperties.lookup("TrefXS"));
-dimensionedScalar rhoReference(nuclearProperties.lookup("rhoReference"));
-dimensionedScalar nubar(nuclearProperties.lookup("nubar"));
+dimensionedScalar TrefXS("TrefXS", nuclearProperties);
+dimensionedScalar rhoReference("rhoReference", nuclearProperties);
+dimensionedScalar nubar("nubar", nuclearProperties);
 
 volScalarField rhok=alpha2*rho2/rhoReference;
 volScalarField rhod=(alpha1*rho1 + alpha2*rho2)/rhoReference;
@@ -175,8 +175,8 @@ scalar KeffControl = runTime.controlDict().lookupOrDefault<scalar>("KeffControl"
       )
     );
 
-	dimensionedScalar Sc(precursorTransportProperties.lookup("Sc"));
-	dimensionedScalar Sct(precursorTransportProperties.lookup("Sct"));
+	dimensionedScalar Sc("Sc", precursorTransportProperties);
+	dimensionedScalar Sct("Sct", precursorTransportProperties);
 
 //read decay heat precursor
 

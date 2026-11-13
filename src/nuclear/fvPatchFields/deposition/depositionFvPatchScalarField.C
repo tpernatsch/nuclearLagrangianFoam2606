@@ -93,18 +93,6 @@ Foam::depositionFvPatchScalarField::depositionFvPatchScalarField
 
 Foam::depositionFvPatchScalarField::depositionFvPatchScalarField
 (
-    const depositionFvPatchScalarField& tppsf
-)
-:
-    mixedFvPatchScalarField(tppsf),
-    gamma_(tppsf.gamma_),
-    c0_(tppsf.c0_),
-    diffCoeffName_(tppsf.diffCoeffName_)
-{}
-
-
-Foam::depositionFvPatchScalarField::depositionFvPatchScalarField
-(
     const depositionFvPatchScalarField& tppsf,
     const DimensionedField<scalar, volMesh>& iF
 )

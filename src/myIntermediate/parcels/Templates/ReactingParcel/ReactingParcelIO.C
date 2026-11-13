@@ -105,7 +105,7 @@ void Foam::ReactingParcel<ParcelType>::readFields
 
     IOField<scalar> mass0
     (
-        c.fieldIOobject("mass0", IOobject::MUST_READ),
+        c.newIOobject("mass0", IOobject::MUST_READ),
         readOnProc
     );
     c.checkFieldIOobject(c, mass0);
@@ -139,7 +139,7 @@ void Foam::ReactingParcel<ParcelType>::readFields
     {
         IOField<scalar> Y
         (
-            c.fieldIOobject
+            c.newIOobject
             (
                 "Y" + phaseTypes[j] + stateLabels[j],
                  IOobject::MUST_READ
@@ -180,7 +180,7 @@ void Foam::ReactingParcel<ParcelType>::writeFields
     const bool writeOnProc = c.size();
 
     {
-        IOField<scalar> mass0(c.fieldIOobject("mass0", IOobject::NO_READ), np);
+        IOField<scalar> mass0(c.newIOobject("mass0", IOobject::NO_READ), np);
 
         label i = 0;
         for (const ReactingParcel<ParcelType>& p : c)
@@ -203,7 +203,7 @@ void Foam::ReactingParcel<ParcelType>::writeFields
         {
             IOField<scalar> Y
             (
-                c.fieldIOobject
+                c.newIOobject
                 (
                     "Y" + phaseTypes[j] + stateLabels[j],
                     IOobject::NO_READ

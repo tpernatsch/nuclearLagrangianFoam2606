@@ -145,21 +145,6 @@ public:
             const fvPatchFieldMapper&
         );
 
-        //- Copy constructor
-        albedoFvPatchScalarField
-        (
-            const albedoFvPatchScalarField&
-        );
-
-        //- Construct and return a clone
-        virtual tmp<fvPatchScalarField> clone() const
-        {
-            return tmp<fvPatchScalarField>
-            (
-                new albedoFvPatchScalarField(*this)
-            );
-        }
-
         //- Copy constructor setting internal field reference
         albedoFvPatchScalarField
         (

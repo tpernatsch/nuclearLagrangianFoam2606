@@ -3,10 +3,10 @@
 Info << "\nReading Xenon properties" << endl;
 
 dictionary xenonDict(nuclearProperties.subDict("xenon"));
-dimensionedScalar lambda_xe(xenonDict.lookup("lambda_xe"));
-dimensionedScalar MW_xe(xenonDict.lookup("MW_xe"));
-dimensionedScalar y_xe(xenonDict.lookup("y_xe"));
-dimensionedScalar N_Av(xenonDict.lookup("N_Av"));
+dimensionedScalar lambda_xe("lambda_xe", xenonDict);
+dimensionedScalar MW_xe("MW_xe", xenonDict);
+dimensionedScalar y_xe("y_xe", xenonDict);
+dimensionedScalar N_Av("N_Av", xenonDict);
 
 // Xenon capture [m^2]
 PtrList<dimensionedScalar> alfaXE(energyGroups);

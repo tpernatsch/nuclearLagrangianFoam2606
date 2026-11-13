@@ -87,7 +87,7 @@ void Foam::MPPICParcel<ParcelType>::readFields(CloudType& c)
 
     IOField<vector> UCorrect
     (
-        c.fieldIOobject("UCorrect", IOobject::MUST_READ),
+        c.newIOobject("UCorrect", IOobject::MUST_READ),
         readOnProc
     );
     c.checkFieldIOobject(c, UCorrect);
@@ -112,7 +112,7 @@ void Foam::MPPICParcel<ParcelType>::writeFields(const CloudType& c)
     const bool writeOnProc = c.size();
 
     IOField<vector>
-        UCorrect(c.fieldIOobject("UCorrect", IOobject::NO_READ), np);
+        UCorrect(c.newIOobject("UCorrect", IOobject::NO_READ), np);
 
     label i = 0;
 

@@ -357,7 +357,6 @@ bool Foam::LocalInteractionMix<CloudType>::correct
                 vector Up;
 
                 this->owner().patchData(p, pp, nw, Up);
-                scalar Un = U & nw;
                 //scalar dCrit = 1e-4;
                 //scalar UCrit = 1e-2;
                 scalar e_n;

@@ -144,21 +144,6 @@ public:
             const fvPatchFieldMapper&
         );
 
-        //- //- Copy constructor
-        depositionFvPatchScalarField
-        (
-            const depositionFvPatchScalarField&
-        );
-
-        //- Construct and return a clone
-        virtual tmp<fvPatchScalarField> clone() const
-        {
-            return tmp<fvPatchScalarField>
-            (
-                new depositionFvPatchScalarField(*this)
-            );
-        }
-
         //- Copy constructor setting internal field reference
         depositionFvPatchScalarField
         (

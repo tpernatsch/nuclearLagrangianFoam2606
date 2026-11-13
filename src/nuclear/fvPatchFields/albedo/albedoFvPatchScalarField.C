@@ -92,17 +92,6 @@ Foam::albedoFvPatchScalarField::albedoFvPatchScalarField
 
 Foam::albedoFvPatchScalarField::albedoFvPatchScalarField
 (
-    const albedoFvPatchScalarField& tppsf
-)
-:
-    mixedFvPatchScalarField(tppsf),
-    beta_(tppsf.beta_),
-    diffCoeffName_(tppsf.diffCoeffName_)
-{}
-
-
-Foam::albedoFvPatchScalarField::albedoFvPatchScalarField
-(
     const albedoFvPatchScalarField& tppsf,
     const DimensionedField<scalar, volMesh>& iF
 )
