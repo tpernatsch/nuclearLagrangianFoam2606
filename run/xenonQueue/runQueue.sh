@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs a queue of xenon cases one after the other in the background (runQueue.py); survives logout.
-#   ./runQueue.sh N queueNextSteps.py [--only PATTERN ...] [--force]    N = number of cores
+#   ./runQueue.sh N queueNextSteps.py [--only PATTERN ...] [--force]    N = cores, at most the physical ones
 #   ./runQueue.sh stop                                                  stop the queue and its solver
 # Progress: tail -f queue.log; state of each run: python3 runQueue.py queueNextSteps.py --list
 # Starting again resumes a stopped run and skips the finished ones.
@@ -31,18 +31,25 @@ shift
 [ -f "$1" ] || { echo "queue file '$1' not found"; exit 1; }
 running && { echo "a queue is already running (pid $(cat queue.pid)); $0 stop first"; exit 1; }
 
+# the OpenFOAM bashrc reads its arguments as settings: source it with none
+args=("$@")
+set --
 if [ -z "$WM_PROJECT_DIR" ]
 then
     . "${OPENFOAM_BASHRC:-/usr/lib/openfoam/openfoam2606/etc/bashrc}" \
         || { echo "OpenFOAM not found: source its etc/bashrc or set OPENFOAM_BASHRC"; exit 1; }
 fi
 . "$repo/etc/sourceme.sh"
+set -- "${args[@]}"
 export PATH=$FOAM_USER_APPBIN:$PATH
 command -v xenonTransferInterFoam > /dev/null \
     || { echo "xenonTransferInterFoam not built: run ./Allwmake in $repo"; exit 1; }
 
 # own process group, so that stop also ends mpirun and the solver
+echo "=== $(date '+%F %T') ./runQueue.sh $n $*" >> queue.log
 setsid nohup python3 runQueue.py "$@" --np "$n" >> queue.log 2>&1 < /dev/null &
 echo $! > queue.pid
-echo "queue started on $n cores (pid $!)"
+sleep 3
+running || { echo "the queue stopped at once:"; tail -n 5 queue.log; rm -f queue.pid; exit 1; }
+echo "queue started on $n cores (pid $(cat queue.pid))"
 echo "progress: tail -f queue.log    runs: python3 runQueue.py $1 --list    stop: $0 stop"
