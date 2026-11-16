@@ -363,7 +363,10 @@ instabilities, so the definitive check is the 3D `steadyThenTransient` case (on 
 A one-way coupled nuclear particle cloud (`FPCloud`, NuclearCloud from `src/myIntermediate`) rides on the
 transient stage. It is attached through the fvOption `nuclearCloudSourceSingle` (`src/nuclearCloudFvOptions`,
 `libs (... nuclearCloudFvOptions)` in the transient controlDict). The cloud is evolved once per time step from
-`fvOptions.correct(U)`, so it needs `momentumPredictor yes` and `nOuterCorrectors 1` (both set). It never
+the first `fvOptions.correct(U)` of the step: after the momentum predictor, or, with `MOMENTUM_PREDICTOR = False`
+(the default, `momentumPredictor no`), after the first pressure corrector; `nOuterCorrectors 1`. The predictor is
+off because on the level-scaled xxfine wedges it grows an odd-even p_rgh/U checkerboard in the thin outer-wall
+cells after ~0.1 s, whatever the time step, which cuts the flow time step from 7-9 ms to ~1.1 ms. It never
 changes U or T. With `steadyThenTransient`, Allrun swaps `constant/fvOptions.{steady,transient}` so that the
 cloud exists only in the PIMPLE stage.
 

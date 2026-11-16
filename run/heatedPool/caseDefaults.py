@@ -189,6 +189,11 @@ TRANSIENT_END_TIME = 60.0      # [s]  (after the steady stage; for a cold start 
 TRANSIENT_WRITE_INTERVAL = 5.0 # [s]
 MAX_CO = 0.8
 MAX_DELTA_T = 0.05             # [s]
+MOMENTUM_PREDICTOR = False     # PIMPLE (transient) momentum predictor. False: U comes from the pressure correctors
+                               # only. With the predictor on, the thin wall cells of the level-scaled xxfine wedges
+                               # grow an odd-even p_rgh/U checkerboard after ~0.1 s whatever dt (flow dt 1.1 ms instead
+                               # of 7-9 ms); off, A and B stay on the steady flow (tests 2026-11-16). Missing key in
+                               # an old caseSettings.py = True (old behaviour). The cloud still evolves once per step.
 HEAT_BALANCE_EVERY = 10        # write the heat balance every N time steps / iterations
 N_PROCS = 64
 

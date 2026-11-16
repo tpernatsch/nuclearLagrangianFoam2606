@@ -345,8 +345,31 @@ bool Foam::KinematicParcel<ParcelType>::move
     const scalarField& cellLengthScale = cloud.cellLengthScale();
     const scalar maxCo = solution.maxCo();
 
+    // Safeguard against a parcel requiring an excessive (or effectively
+    // unbounded) number of sub-cycles to complete its step-fraction, which
+    // can happen when the local cell length scale is extremely small
+    // relative to the parcel's per-timestep displacement (e.g. very thin
+    // near-wall boundary-layer cells). A normal parcel needs roughly
+    // 1/maxCo sub-cycles, so this is a generous but finite cap.
+    label nSubCycles = 0;
+    const label maxSubCycles = 1000;
+
     while (ttd.keepParticle && !ttd.switchProcessor && p.stepFraction() < 1)
     {
+        if (++nSubCycles > maxSubCycles)
+        {
+            WarningInFunction
+                << "Parcel stuck after " << maxSubCycles << " sub-cycles at "
+                << "position " << p.position() << " in cell " << p.cell()
+                << " (stepFraction=" << p.stepFraction()
+                << ", cellLengthScale="
+                << cellLengthScale[p.cell()] << "). "
+                << "Forcing completion of this timestep for this parcel."
+                << endl;
+            p.stepFraction() = 1;
+            break;
+        }
+
         // Cache the current position, cell and step-fraction
         const point start = p.position();
         const scalar sfrac = p.stepFraction();

@@ -2072,7 +2072,8 @@ def release_text(pp):
 def cloud_fvoption(cfg, d):
     return f"""
 // Lagrangian fission-product cloud ({CLOUD}Properties), one-way coupled: evolved once per time step
-// from fvOptions.correct(U) (momentumPredictor yes, nOuterCorrectors 1), never touches U or T.
+// from the first fvOptions.correct(U) of the step (after the momentum predictor, or after the first
+// pressure corrector with momentumPredictor no; nOuterCorrectors 1), never touches U or T.
 // Carrier rho and nu are constants at TRef (the salt viscosity of the particle forces does not follow T).
 {CLOUD}
 {{
@@ -2812,7 +2813,7 @@ snGradSchemes
 """
 
 
-def fv_solution(stage, all_flux, wedge=False):
+def fv_solution(stage, all_flux, wedge=False, predictor=True):
     solvers = """
 solvers
 {
@@ -2914,11 +2915,13 @@ relaxationFactors
     }
 }
 """.replace("@TRELAX@", t_relax).replace("@UTOL@", "5e-6;   // wedge: the azimuthal component (U ~ 0) stalls at ~1e-6" if wedge else "1e-7;")
+    pred = ("yes;" if predictor else
+            "no;     // on: odd-even p_rgh/U checkerboard in thin wall cells (MOMENTUM_PREDICTOR)")
     return solvers % ("0.01", t_transient) + """
 PIMPLE
 {
-    momentumPredictor       yes;    // buoyancy-driven: keep the momentum predictor
-    nOuterCorrectors        1;
+    momentumPredictor       @PRED@
+    nOuterCorrectors        1;""".replace("@PRED@", pred) + """
     nCorrectors             2;
     nNonOrthogonalCorrectors 1;
     pRefCell                0;      // closed domain: pressure level fixed here
@@ -2946,7 +2949,8 @@ def write_system(c, cfg, d):
         suffix = "" if len(st) == 1 else f".{stage}"
         c.write(f"system/controlDict{suffix}", control_dict(cfg, d, stage), obj="controlDict")
         c.write(f"system/fvSchemes{suffix}", fv_schemes(stage), obj="fvSchemes")
-        c.write(f"system/fvSolution{suffix}", fv_solution(stage, d["all_flux"], is_wedge(cfg)), obj="fvSolution")
+        c.write(f"system/fvSolution{suffix}", fv_solution(stage, d["all_flux"], is_wedge(cfg),
+                                                                getattr(cfg, "MOMENTUM_PREDICTOR", True)), obj="fvSolution")
     if len(st) > 1:     # blockMesh etc. need a controlDict before the first stage copies one in
         for f in ("controlDict", "fvSchemes", "fvSolution"):
             shutil.copy(os.path.join(c.root, "system", f"{f}.steady"), os.path.join(c.root, "system", f))
