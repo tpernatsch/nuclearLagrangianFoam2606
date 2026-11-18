@@ -301,7 +301,8 @@ def run_one(R, runs_dir, np_, force, prepare_only):
         res, L = collect(d)
         info["results"] = res
         endTime = float(entry(d / "system" / "controlDict", "endTime"))
-        reached = L["t"] is not None and L["t"] >= endTime * (1 - 1e-6) - 1e-12
+        # OpenFOAM stops within half a step of endTime
+        reached = L["t"] is not None and L["t"] >= endTime - L["dtMax"] - 1e-12
         info["status"] = "done" if rc == 0 and L["end"] and reached else "failed"
         info["solverRc"] = rc
         if info["status"] == "failed":
