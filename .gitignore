@@ -24,3 +24,6 @@ run/heatedPool/cases/
 run/xenonQueue/runs/
 run/xenonQueue/queue.log
 run/xenonQueue/queue.pid
+
+# confidential input data for heatedPool case C (never commit)
+run/heatedPool/confidential/

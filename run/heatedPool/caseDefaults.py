@@ -110,6 +110,24 @@ def _profiles():
 THERMOCOUPLES = _profiles()    # {"A": {"axis": {z, T}, "outer": {z, T}}, "B": {"outer": {z, T}}}  [m], [K]
 TC_PROFILE = "clamped_top"
 
+# ----------------------------------------------------------------------------- geometry C (graphite crucible)
+# Its data (salt, dimensions, crucible, thermocouple, power) are confidential: they live in the gitignored
+# confidential/C_inputs.py, whose preset() overrides the settings above when GEOMETRY = "C" (setupCase
+# apply_geometry_preset). Without that file geometry C is not offered.
+GEOMETRY_PRESETS = {}
+try:
+    import importlib.util as _ilu
+    import os as _os
+    _spec = _ilu.spec_from_file_location(
+        "C_inputs", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "confidential", "C_inputs.py"))
+    _cin = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_cin)
+    _pre, THERMOCOUPLES["C"] = _cin.preset(THERMOCOUPLES["B"]["outer"])
+    THERMOCOUPLES["C"] = {"outer": THERMOCOUPLES["C"]}
+    GEOMETRY_PRESETS["C"] = _pre
+except FileNotFoundError:
+    pass
+
 # Wall model:
 #   "1D"    : conduction through the wall thickness only (axial cladding conduction < ~3 %, see
 #             claddingAnalysis.py). Needed by the modes "cladding" and "ring".
@@ -237,6 +255,9 @@ PARTICLES = dict(
     walls="stick",
     brownian="BrownianMotion",          # stock Li-Ahmadi (exact displacement for dt >> tauP) or "BoundedBrownianMotion" (see README)
     brownian_lambda=1e-12,
+    brownian_displacement=True,         # BrownianMotion 'displacement yes': random position step each sub-step
+                                        # (overdamped Langevin) instead of a random force on the velocity ODE, which
+                                        # over-diffuses when the sub-step dt >> tau_P. Always on for these runs.
     u_integration="analytical",         # exact for frozen forces at any dt/tauP; "CrankNicolson" does not damp for dt >> tauP (README)
     lift="Ekanayake",                   # shear lift: "Ekanayake" (shear + wall lift at any wall distance, all wall patches,
                                         # Ekanayake et al. 2021 up to Re_slip, Re_gamma = lift_remax, Takemura et al. 2009
@@ -269,6 +290,11 @@ EULERIAN = dict(
     tolerance=1e-8,         # steady when the largest relative change of N per iteration and the residual are below
     max_iterations=20000,
 )
+# Geometry C is compared with Ru-103 scans: ruthenium particles (only rho0 matters: one-way coupled, no heat).
+# Ru metal: rho 12370 kg/m3 (as the notebook's atom-size table), cp ~270 J/kg/K and k ~100 W/m/K near 1000 K.
+if "C" in GEOMETRY_PRESETS:
+    GEOMETRY_PRESETS["C"]["PARTICLES"] = dict(
+        PARTICLES, particle=dict(PARTICLES["particle"], rho0=12370.0, Cp0=270.0, kappa0=100.0))
 
 # ----------------------------------------------------------------------------- probes
 # Points at angle 0 (x axis): every radius x every height. Radii outside the liquid are dropped.

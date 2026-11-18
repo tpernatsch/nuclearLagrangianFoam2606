@@ -13,6 +13,7 @@ internally heated liquid pool in a closed container with a flat free surface on 
 
 Run a case with ./Allrun inside it.
 """
+import copy
 import importlib.util
 import math
 import os
@@ -39,7 +40,7 @@ MESH_LEVELS = {                # target uniform cell size: h (radial / tangentia
     "xfine":  dict(h=0.125e-3, dz=0.25e-3),     # mesh study (ratio ~1.4 per level); 3D: very large
     "xxfine": dict(h=0.09e-3, dz=0.18e-3),
 }
-GEOMETRIES = {"A": "annulus", "B": "cylinder"}
+GEOMETRIES = {"A": "annulus", "B": "cylinder", "C": "cylinder"}   # C: data from GEOMETRY_PRESETS
 MODE_TAGS = {"steady": "SS", "transient": "TR", "steadyThenTransient": "SS-TR"}
 SOLVER = {"steady": "buoyantBoussinesqSimpleFoam", "transient": "buoyantBoussinesqPimpleFoam"}
 
@@ -72,8 +73,14 @@ def save_config(cfg, path, note):
     with open(path, "w") as f:
         f.write(f'"""Settings used to generate this case ({note}).\n'
                 f'Regenerate with:  python3 setupCase.py --from {os.path.basename(path)}"""\n\n')
-        for k in sorted(vars(cfg)):
-            f.write(f"{k} = {getattr(cfg, k)!r}\n")
+        vals = dict(vars(cfg))
+        # presets (geometry C: confidential data) only in the case they were applied to
+        vals.pop("GEOMETRY_PRESETS", None)
+        if isinstance(vals.get("THERMOCOUPLES"), dict):
+            vals["THERMOCOUPLES"] = {g: v for g, v in vals["THERMOCOUPLES"].items()
+                                     if g in ("A", "B") or g == cfg.GEOMETRY}
+        for k in sorted(vals):
+            f.write(f"{k} = {vals[k]!r}\n")
 
 
 def fmt(x):
@@ -177,6 +184,38 @@ def q_vol(cfg):
     return cfg.Q_VOL
 
 
+def cylinder(cfg):
+    """(R, H) of a cylinder geometry: B, or C (C_DIAMETER/C_HEIGHT from its GEOMETRY_PRESETS entry)."""
+    if cfg.GEOMETRY == "C":
+        if not getattr(cfg, "C_DIAMETER", None):
+            raise SystemExit("geometry C needs its preset (caseDefaults GEOMETRY_PRESETS: confidential/C_inputs.py)")
+        return cfg.C_DIAMETER / 2, cfg.C_HEIGHT
+    return cfg.B_DIAMETER / 2, cfg.B_HEIGHT
+
+
+def height(cfg):
+    return cfg.A_HEIGHT if cfg.GEOMETRY == "A" else cylinder(cfg)[1]
+
+
+def outer_radius(cfg):
+    """Liquid radius at the outer wall."""
+    return cfg.A_OUTER_DIAMETER / 2 if cfg.GEOMETRY == "A" else cylinder(cfg)[0]
+
+
+def apply_geometry_preset(cfg):
+    """Geometry with an entry in GEOMETRY_PRESETS (C): overwrite the settings it lists (salt, dimensions,
+    wall material, thermal boundaries, ...). Once only: PRESET_APPLIED records it, so a replay of the
+    written caseSettings.py keeps any later edit."""
+    pre = (getattr(cfg, "GEOMETRY_PRESETS", None) or {}).get(cfg.GEOMETRY)
+    if cfg.GEOMETRY == "C" and pre is None and not getattr(cfg, "C_DIAMETER", None):
+        raise SystemExit("geometry C: no preset (confidential/C_inputs.py missing?)")
+    if pre is None or getattr(cfg, "PRESET_APPLIED", None) == cfg.GEOMETRY:
+        return
+    for k, v in pre.items():
+        setattr(cfg, k, copy.deepcopy(v))
+    cfg.PRESET_APPLIED = cfg.GEOMETRY
+
+
 def patches(cfg):
     return (["innerWall"] if cfg.GEOMETRY == "A" else []) + ["outerWall", "bottom", "freeSurface"]
 
@@ -197,7 +236,7 @@ def effective_h(spec, T):
 def wall_radius(cfg, p):
     """(liquid-side radius, +1 cladding outside / -1 cladding inside) of a curved wall, None if flat."""
     if p == "outerWall":
-        return (cfg.A_OUTER_DIAMETER if cfg.GEOMETRY == "A" else cfg.B_DIAMETER) / 2, 1
+        return outer_radius(cfg), 1
     if p == "innerWall":
         return cfg.A_INNER_DIAMETER / 2, -1
     return None
@@ -223,9 +262,13 @@ def equivalent_layers(cfg, p, layers):
 
 
 def pick_geometry(cfg, spec):
-    """Values given as {"A": ..., "B": ...} -> the one for the current geometry."""
-    return {k: (v[cfg.GEOMETRY] if isinstance(v, dict) and v and set(v) <= set(GEOMETRIES) else v)
-            for k, v in spec.items()}
+    """Values given as {"A": ..., "B": ...} -> the one for the current geometry (C, a cylinder, falls back
+    on the B value when it has none)."""
+    def one(v):
+        if not (isinstance(v, dict) and v and set(v) <= set(GEOMETRIES)):
+            return v
+        return v[cfg.GEOMETRY] if cfg.GEOMETRY in v else v["B" if cfg.GEOMETRY == "C" else cfg.GEOMETRY]
+    return {k: one(v) for k, v in spec.items()}
 
 
 def resolve_bcs(cfg, d):
@@ -381,7 +424,7 @@ def clad_geometry(cfg, p):
     """('cyl', r_i, r_o) for the outer tube, ('plate', t) for the bottom plate."""
     c = cfg.CLADDING
     if p == "outerWall":
-        ri = (cfg.A_OUTER_DIAMETER if cfg.GEOMETRY == "A" else cfg.B_DIAMETER) / 2
+        ri = outer_radius(cfg)
         return ("cyl", ri, c["outer_diameter"] / 2)
     if p == "bottom":
         return ("plate", c["bottom_thickness"])
@@ -524,7 +567,7 @@ def cladding_layers(cfg, p):
     """[(thickness, k)] of the Hastelloy cladding behind a patch."""
     c = cfg.CLADDING
     if p == "outerWall":
-        rw = (cfg.A_OUTER_DIAMETER if cfg.GEOMETRY == "A" else cfg.B_DIAMETER) / 2
+        rw = outer_radius(cfg)
         t = c["outer_diameter"] / 2 - rw
     elif p == "innerWall":
         t = cfg.A_INNER_DIAMETER / 2 - c["inner_ring_diameter"] / 2
@@ -554,15 +597,17 @@ def build_mesh(cfg):
     h, dz = lvl["h"], lvl["dz"]
     bl = cfg.BOUNDARY_LAYER
     d1, r = bl_params(cfg)
-    top_bl = bl and pick_geometry(cfg, cfg.THERMAL_BC["freeSurface"])["mode"] != "adiabatic"
+    # free surface refined when it exchanges heat, or when particles deposit on it (stick walls)
+    top_bl = bl and (pick_geometry(cfg, cfg.THERMAL_BC["freeSurface"])["mode"] != "adiabatic"
+                     or bool((getattr(cfg, "PARTICLES", None) or {}).get("enabled")))
     m = {}
     if is_wedge(cfg):                           # axisymmetric: one cell around, radial x axial only
-        H = cfg.A_HEIGHT if cfg.GEOMETRY == "A" else cfg.B_HEIGHT
+        H = height(cfg)
         if cfg.GEOMETRY == "A":
             ri, ro = cfg.A_INNER_DIAMETER / 2, cfg.A_OUTER_DIAMETER / 2
             m["rad"], m["Nr"] = graded(ro - ri, h, d1, r, bl, bl)      # inner wall -> outer wall
         else:
-            m["rad"], m["Nr"] = graded(cfg.B_DIAMETER / 2, h, d1, r, False, bl)   # axis -> wall
+            m["rad"], m["Nr"] = graded(cylinder(cfg)[0], h, d1, r, False, bl)   # axis -> wall
         m["ax"], m["Nz"] = graded(H, dz, d1, r, bl, top_bl)
         m["cells"] = m["Nr"] * m["Nz"]
         m["wall_rad"] = cell_sizes(m["rad"])[::-1]
@@ -577,7 +622,7 @@ def build_mesh(cfg):
         m["cells"] = 4 * m["Nt"] * m["Nr"] * m["Nz"]
         m["wall_rad"] = cell_sizes(m["rad"])[::-1]        # outer wall -> inward
     else:
-        R, H = cfg.B_DIAMETER / 2, cfg.B_HEIGHT
+        R, H = cylinder(cfg)
         s, ra = cfg.B_CORE_HALF_SIDE * R, cfg.B_CORE_ARC_RADIUS * R
         m["Nc"] = math.ceil(0.5 * math.pi * R / h - 1e-9)
         m["rad"], m["Nr"] = graded(R - ra, h, d1, r, bl, False)    # wall -> core
@@ -610,7 +655,7 @@ def derive(cfg):
         d["area"] = dict(innerWall=2 * math.pi * ri * H, outerWall=2 * math.pi * ro * H, bottom=Aend, freeSurface=Aend)
         d["L"] = 0.5 * (ro - ri)                   # half-gap: conduction length
     else:
-        R, H = cfg.B_DIAMETER / 2, cfg.B_HEIGHT
+        R, H = cylinder(cfg)
         Aend = math.pi * R ** 2
         d["area"] = dict(outerWall=2 * math.pi * R * H, bottom=Aend, freeSurface=Aend)
         d["L"] = R
@@ -666,7 +711,7 @@ def derive(cfg):
     d["delta"] = H * d["Ra_H"] ** -0.25
     if radiation_on(cfg):
         a_abs = cfg.RADIATION["absorption"]
-        d["L_opt"] = (cfg.A_OUTER_DIAMETER - cfg.A_INNER_DIAMETER) / 2 if cfg.GEOMETRY == "A" else cfg.B_DIAMETER
+        d["L_opt"] = (cfg.A_OUTER_DIAMETER - cfg.A_INNER_DIAMETER) / 2 if cfg.GEOMETRY == "A" else 2 * cylinder(cfg)[0]
         d["tau_opt"] = a_abs * d["L_opt"]
         # optically thick (Rosseland) limit: radiation acts as an extra conductivity
         d["k_rad"] = 16 * SIGMA_SB * cfg.T_REF ** 3 / (3 * a_abs)
@@ -726,6 +771,12 @@ def checks(cfg, d):
             w.append("BoundedBrownianMotion: for dt >> tauP the parcel diffusivity is dt/(2 tauP) x Stokes-Einstein "
                      "(and sub-100 nm parcels get ~thermal speed -> very slow); stock 'BrownianMotion' is exact there "
                      "(see README)")
+            if pp.get("brownian_displacement", True):
+                w.append("PARTICLES brownian_displacement: only the stock 'BrownianMotion' force has the "
+                         "displacement option; not written for BoundedBrownianMotion")
+        elif not pp.get("brownian_displacement", True):
+            w.append("PARTICLES brownian_displacement is off: the random force on the velocity ODE over-diffuses "
+                     "when the sub-step dt >> tauP; these runs must use displacement yes")
         if pp.get("u_integration", "CrankNicolson") == "CrankNicolson":
             w.append("U integration CrankNicolson does not damp the slip when dt >> tauP (amplification -> -1): "
                      "use 'analytical' (see README)")
@@ -798,7 +849,7 @@ def write_mesh_wedge(c, cfg, d):
     front       { type wedge; faces ((0 1 5 4)); }
     back        { type wedge; faces ((3 7 6 2)); }"""
     else:
-        R = cfg.B_DIAMETER / 2
+        R = cylinder(cfg)[0]
         verts = ["(0 0 0)", pt(R, -1, 0), pt(R, 1, 0), f"(0 0 {fmt(H)})", pt(R, -1, H), pt(R, 1, H)]
         block = f"hex (0 1 2 0 3 4 5 3) ($Nr 1 $Nz) simpleGrading ({gr} 1 {gz})"
         bnd = """    outerWall   { type wall;  faces ((1 2 5 4)); }
@@ -915,7 +966,7 @@ boundary
 
 def write_mesh_cylinder(c, cfg, d):
     m = d["mesh"]
-    R, H = cfg.B_DIAMETER / 2, cfg.B_HEIGHT
+    R, H = cylinder(cfg)
     s, ra = cfg.B_CORE_HALF_SIDE * R, cfg.B_CORE_ARC_RADIUS * R
     gr, gz = grading(m["rad"]), grading(m["ax"])
     c.write("system/blockMeshDict", f"""
@@ -1037,7 +1088,7 @@ def cxx_list(values, fmt_="{:.10g}"):
 
 def profile_table(cfg, prof, n=101):
     """The thermocouple profile sampled for the coded BCs (linear in between, held outside)."""
-    H = cfg.A_HEIGHT if cfg.GEOMETRY == "A" else cfg.B_HEIGHT
+    H = height(cfg)
     z = [H * i / (n - 1) for i in range(n)]
     return z, [prof(v) for v in z]
 
@@ -1045,12 +1096,14 @@ def profile_table(cfg, prof, n=101):
 def cladding_bc(cfg, d, p, s):
     """Coded Robin condition for a cladding wall with heat generation (see clad_robin)."""
     g = s["geom"]
-    kT, kK = zip(*(cfg.CLADDING.get("k_table") or [(0.0, cfg.CLADDING["k"])]))
+    # interpolateXY needs two points at least, and a two-element brace list is ambiguous for scalarField
+    # (size + value constructor): a constant k is a flat three-point table
+    kT, kK = zip(*(cfg.CLADDING.get("k_table") or [(T, cfg.CLADDING["k"]) for T in (0.0, 5e3, 1e4)]))
     measured = s.get("outside") == "measured"
     lines = [f"const scalar qc = {q_clad(cfg):.10g};      // cladding heat generation [W/m3]",
              f"const scalar kf = {cfg.K:.10g};          // salt conductivity [W/m/K]",
              f"const scalarField kT({cxx_list(kT)});",
-             f"const scalarField kK({cxx_list(kK)});      // Hastelloy k(T)"]
+             f"const scalarField kK({cxx_list(kK)});      // cladding k(T)"]
     if g[0] == "cyl":
         lines.append(f"const scalar ri = {g[1]:.10g}, ro = {g[2]:.10g};   // liquid side / outer surface radius")
     else:
@@ -1258,7 +1311,7 @@ def write_fields(c, cfg, d):
         txt = "\n".join(f"    {p}\n    {{\n{indent(fn(p), 8)}\n    }}" for p in pts)
         if is_wedge(cfg):
             txt += "\n    \"(front|back)\"\n    {\n        type            wedge;\n    }"
-            if cfg.GEOMETRY == "B":
+            if cfg.GEOMETRY != "A":
                 txt += "\n    axis\n    {\n        type            empty;\n    }"
         return txt
 
@@ -2032,7 +2085,7 @@ def injection_positions(cfg, d):
         ri, ro = cfg.A_INNER_DIAMETER / 2, cfg.A_OUTER_DIAMETER / 2
         r0, r1 = ri + m * (ro - ri) + gw, ro - m * (ro - ri) - gw
     else:
-        R = cfg.B_DIAMETER / 2
+        R = cylinder(cfg)[0]
         r0 = max(0.5 * m * R, 0.01 * R) if is_wedge(cfg) else 0.0     # wedge: keep off the collapsed axis
         r1 = (1 - m) * R - gw
     z0, z1 = m * H + gw, (1 - m) * H - gw
@@ -2327,7 +2380,7 @@ subModels
         gravity;
         {pp.get('brownian', 'BoundedBrownianMotion')}
         {{
-            lambda      {pp['brownian_lambda']:g};{"" if pp.get('brownian', 'BoundedBrownianMotion') == 'BoundedBrownianMotion' else chr(10) + "            turbulence  false;"}
+            lambda      {pp['brownian_lambda']:g};{"" if pp.get('brownian', 'BoundedBrownianMotion') == 'BoundedBrownianMotion' else chr(10) + "            turbulence  false;" + (chr(10) + "            displacement yes;    // random position step (overdamped Langevin), not a force" if pp.get('brownian_displacement', True) else "")}
         }}
     }}
 
@@ -2598,7 +2651,7 @@ def probe_points(cfg, d):
         radii = cfg.PROBE_RADII or [0.5 * (ri + ro), ro - 0.1 * (ro - ri)]
         radii = [r for r in radii if ri < r < ro]
     else:
-        R = cfg.B_DIAMETER / 2
+        R = cylinder(cfg)[0]
         radii = cfg.PROBE_RADII or [0.0, 0.5 * R, 0.9 * R]
         radii = [r for r in radii if 0 <= r < R]
     return [(r, f * d["H"]) for r in radii for f in cfg.PROBE_HEIGHT_FRACTIONS if 0 < f < 1]
@@ -3084,7 +3137,7 @@ rm -rf steadyResult constant/finite-area foam.foam{restore}""", executable=True)
 def write_summary(c, cfg, d, warnings, note):
     m = d["mesh"]
     geo = (f"annulus Di = {1e3 * cfg.A_INNER_DIAMETER:g} mm, Do = {1e3 * cfg.A_OUTER_DIAMETER:g} mm, H = {1e3 * cfg.A_HEIGHT:g} mm"
-           if cfg.GEOMETRY == "A" else f"cylinder D = {1e3 * cfg.B_DIAMETER:g} mm, H = {1e3 * cfg.B_HEIGHT:g} mm")
+           if cfg.GEOMETRY == "A" else f"cylinder D = {2e3 * cylinder(cfg)[0]:g} mm, H = {1e3 * cylinder(cfg)[1]:g} mm")
     if is_wedge(cfg):
         cells = f"axisymmetric wedge {cfg.WEDGE_ANGLE:g} deg: Nr={m['Nr']} x Nz={m['Nz']}"
     elif cfg.GEOMETRY == "A":
@@ -3113,14 +3166,14 @@ def write_summary(c, cfg, d, warnings, note):
             continue
         if s["mode"] == "cladding":
             g, r = s["geom"], s["robin"]
-            geo = (f"tube {1e3 * g[1]:g} -> {1e3 * g[2]:g} mm" if g[0] == "cyl" else f"plate {1e3 * g[1]:g} mm")
+            cg = (f"tube {1e3 * g[1]:g} -> {1e3 * g[2]:g} mm" if g[0] == "cyl" else f"plate {1e3 * g[1]:g} mm")
             gen = f"generation {q_clad(cfg) / 1e6:.3g} W/cm3 -> dT_gen {r['dTg']:.3g} K"
             if s.get("outside") == "measured":
                 side = f"outside = thermocouple profile ({cfg.TC_PROFILE})"
             else:
                 side = (f"outside gas: h = {s['h']:.4g} W/m2K{' (auto)' if 'auto' in s else ''}, Ta = {s['Ta']:g} K, "
                         f"emissivity {s.get('emissivity', 0):g}")
-            txt = (f"cladding {geo}, k(T), {gen}\n{'':16}{side}\n"
+            txt = (f"cladding {cg}, k(T), {gen}\n{'':16}{side}\n"
                    f"{'':16}at T_w = {cfg.T_INIT:g} K: q = H (T_w - T_ref), H = {r['H']:.4g} W/m2K, "
                    f"T_ref = {r['Tref']:.1f} K, outer surface {r['Ts']:.1f} K")
             if "auto" in s:
@@ -3417,7 +3470,9 @@ def questionnaire(cfg):
     cfg.GEOMETRY = Ask.choice("Which geometry?", [
         ("A", f"A  annulus  Di {1e3 * cfg.A_INNER_DIAMETER:g} mm / Do {1e3 * cfg.A_OUTER_DIAMETER:g} mm, H {1e3 * cfg.A_HEIGHT:g} mm"),
         ("B", f"B  cylinder D {1e3 * cfg.B_DIAMETER:g} mm, H {1e3 * cfg.B_HEIGHT:g} mm (O-grid)"),
-    ], cfg.GEOMETRY)
+    ] + ([("C", "C  cylinder, graphite crucible (preset: salt, dimensions, wall, thermocouples)")]
+         if "C" in (getattr(cfg, "GEOMETRY_PRESETS", None) or {}) else []), cfg.GEOMETRY)
+    apply_geometry_preset(cfg)
     cfg.THERMAL_BC = {p: pick_geometry(cfg, v) for p, v in cfg.THERMAL_BC.items()}
 
     section(2, N, "Thermal boundaries (Hastelloy cladding on the walls, free surface adiabatic)")
@@ -3532,6 +3587,21 @@ def questionnaire(cfg):
                                             pp.get("release_duration", 0) or 0, 0,
                                             cfg.TRANSIENT_END_TIME - pp["SOI"], "s")
     cfg.PARTICLES = pp
+    eu = dict(getattr(cfg, "EULERIAN", None) or {"enabled": False, "max_diameter": 1e-7,
+                                                   "tolerance": 1e-8, "max_iterations": 20000})
+    if pp["enabled"]:
+        n_eu = sum(d <= eu.get("max_diameter", 1e-7) for d in pp["diameters"])
+        if pp.get("walls") != "stick" or not n_eu:
+            print("\n   Eulerian concentration: not available (needs walls 'stick' and a diameter up to "
+                  f"{eu.get('max_diameter', 1e-7):g} m)")
+            eu["enabled"] = False
+        else:
+            eu["enabled"] = Ask.yes(f"\nAfter the Lagrangian run, solve the Eulerian concentration "
+                                    f"(particleConcentrationFoam on the final flow) for the {n_eu} size(s) up to "
+                                    f"{eu.get('max_diameter', 1e-7):g} m?", eu.get("enabled", True))
+    else:
+        eu["enabled"] = False
+    cfg.EULERIAN = eu
 
     section(8, N, "Parallel run")
     # suggestion: a wedge has a few thousand cells - serial for the flow alone; with particles the parcel
@@ -3571,6 +3641,7 @@ def main():
         questionnaire(cfg)
     if cfg.GEOMETRY not in GEOMETRIES:
         raise SystemExit(f"GEOMETRY must be one of {list(GEOMETRIES)}")
+    apply_geometry_preset(cfg)
     if cfg.MESH_LEVEL not in MESH_LEVELS:
         raise SystemExit(f"MESH_LEVEL must be one of {list(MESH_LEVELS)}")
     if cfg.RUN_MODE not in MODE_TAGS:
