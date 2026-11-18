@@ -213,4 +213,56 @@ Foam::scalar Foam::ParticleForceList<CloudType>::massEff
 }
 
 
+template<class CloudType>
+Foam::vector Foam::ParticleForceList<CloudType>::calcDisplacement
+(
+    const typename CloudType::parcelType& p,
+    const typename CloudType::parcelType::trackingData& td,
+    const scalar dt
+) const
+{
+    vector value(Zero);
+
+    forAll(*this, i)
+    {
+        value += this->operator[](i).calcDisplacement(p, td, dt);
+    }
+
+    return value;
+}
+
+
+template<class CloudType>
+Foam::scalar Foam::ParticleForceList<CloudType>::displacementD
+(
+    const typename CloudType::parcelType& p,
+    const typename CloudType::parcelType::trackingData& td
+) const
+{
+    scalar D = 0;
+
+    forAll(*this, i)
+    {
+        D += this->operator[](i).displacementD(p, td);
+    }
+
+    return D;
+}
+
+
+template<class CloudType>
+bool Foam::ParticleForceList<CloudType>::hasDisplacement() const
+{
+    forAll(*this, i)
+    {
+        if (this->operator[](i).hasDisplacement())
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
 // ************************************************************************* //

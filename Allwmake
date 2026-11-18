@@ -6,6 +6,13 @@ set -e
 # build - see etc/sourceme.sh for why this alone isn't enough for your
 # interactive shell to find built solvers or build a single directory by
 # hand afterwards (source etc/sourceme.sh for that).
+#
+# Set WM_PROJECT_USER_DIR from $PWD (correct here - we're already sitting in
+# the repo root from the cd above) rather than leaving it to sourceme.sh's
+# own BASH_SOURCE/$0 detection: under /bin/sh (dash, no BASH_SOURCE) that
+# detection falls back to $0, which - now that we've already cd'd - resolves
+# one directory too high and breaks every -I/-L path in the build.
+export WM_PROJECT_USER_DIR="$PWD"
 . ./etc/sourceme.sh
 
 # Libraries, in dependency order (myTurbulence links against myIntermediate;

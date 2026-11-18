@@ -3,7 +3,9 @@ cd "${0%/*}" || exit                                # Run from this directory
 
 # See Allwmake/etc/sourceme.sh - keeps WM_PROJECT_USER_DIR/FOAM_USER_*BIN
 # pointed at this repository regardless of where it lives or what the local
-# username is.
+# username is. Set from $PWD here (correct - see Allwmake for why) rather
+# than left to sourceme.sh's own, /bin/sh-unsafe BASH_SOURCE/$0 detection.
+export WM_PROJECT_USER_DIR="$PWD"
 . ./etc/sourceme.sh
 
 wclean applications/utilities/setLogNormal

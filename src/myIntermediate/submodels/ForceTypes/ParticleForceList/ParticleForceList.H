@@ -154,6 +154,27 @@ public:
                 const typename CloudType::parcelType::trackingData& td,
                 const scalar mass
             ) const;
+
+            //- Sum of the direct random displacement contributions from
+            //- any force models in displacement mode (e.g. BrownianMotion
+            //- with "displacement yes;"). Zero when none are active.
+            virtual vector calcDisplacement
+            (
+                const typename CloudType::parcelType& p,
+                const typename CloudType::parcelType::trackingData& td,
+                const scalar dt
+            ) const;
+
+            //- Sum of the diffusivities [m2/s] backing calcDisplacement(),
+            //- for bounding the sub-step size before dt is fixed.
+            virtual scalar displacementD
+            (
+                const typename CloudType::parcelType& p,
+                const typename CloudType::parcelType::trackingData& td
+            ) const;
+
+            //- True if any force model in the list is in displacement mode
+            virtual bool hasDisplacement() const;
 };
 
 

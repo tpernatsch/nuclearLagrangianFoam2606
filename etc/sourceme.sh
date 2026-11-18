@@ -16,15 +16,20 @@
 # even right after a successful Allwmake.
 #------------------------------------------------------------------------------
 
-projDir="$(cd "$(dirname "${BASH_SOURCE:-$0}")/.." && pwd)"
-
-export WM_PROJECT_USER_DIR="$projDir"
+# Respect an already-correct WM_PROJECT_USER_DIR (e.g. set by Allwmake,
+# which knows its own location reliably) rather than recomputing it from
+# ${BASH_SOURCE:-$0}: that fallback only works under bash - under /bin/sh
+# (dash, no BASH_SOURCE) it resolves relative to $0, which breaks if the
+# caller has already cd'd elsewhere before sourcing this file.
+if [ -z "$WM_PROJECT_USER_DIR" ]; then
+    projDir="$(cd "$(dirname "${BASH_SOURCE:-$0}")/.." && pwd)"
+    export WM_PROJECT_USER_DIR="$projDir"
+    unset projDir
+fi
 export FOAM_USER_APPBIN="$WM_PROJECT_USER_DIR/platforms/$WM_OPTIONS/bin"
 export FOAM_USER_LIBBIN="$WM_PROJECT_USER_DIR/platforms/$WM_OPTIONS/lib"
 
 export PATH="$FOAM_USER_APPBIN:$PATH"
 export LD_LIBRARY_PATH="$FOAM_USER_LIBBIN:$LD_LIBRARY_PATH"
-
-unset projDir
 
 #------------------------------------------------------------------------------

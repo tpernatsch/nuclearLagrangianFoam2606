@@ -374,6 +374,19 @@ bool Foam::KinematicParcel<ParcelType>::move
         const point start = p.position();
         const scalar sfrac = p.stepFraction();
 
+        // On a parcel's first sub-cycle, td's cached muc()/Tc() still hold
+        // whatever the previously-processed parcel (elsewhere in the mesh)
+        // left behind - setCellValues() below only refreshes them for the
+        // *next* sub-cycle, using this sub-cycle's post-move position. Any
+        // active displacement force needs them correctly set at *this*
+        // parcel's current position before it can be queried below, so
+        // force that refresh now, on sub-cycle 1 only, and only when a
+        // displacement force is actually active (cheap check otherwise).
+        if (nSubCycles == 1 && cloud.forces().hasDisplacement())
+        {
+            p.setCellValues(cloud, ttd);
+        }
+
         // Total displacement over the time-step
         const vector s = trackTime*U_;
 
@@ -389,10 +402,27 @@ bool Foam::KinematicParcel<ParcelType>::move
         scalar f = 1 - p.stepFraction();
         f = min(f, maxCo);
         f = min(f, maxCo*l/max(SMALL*l, mag(s)));
+
+        // Diffusivity backing any active direct-displacement Brownian
+        // motion (e.g. BrownianMotionForce's "displacement" switch; zero
+        // when none are active - see calcDisplacement() below). Bound the
+        // sub-step so the resulting random walk step, like the
+        // deterministic one above, does not exceed maxCo*l in one go.
+        const scalar Dbrownian = cloud.forces().displacementD(p, ttd);
+        f = min(f, sqr(maxCo*l)/max(SMALL, 2*Dbrownian*trackTime));
+
         if (p.active())
         {
+            // Direct random position displacement over this sub-step
+            // (zero unless a force model is in displacement mode), drawn
+            // with this sub-step's own attempted duration f*trackTime and
+            // folded into the same trackToFace() call as the deterministic
+            // motion, so a face-hit truncates both together.
+            const vector dXBrownian =
+                cloud.forces().calcDisplacement(p, ttd, f*trackTime);
+
             // Track to the next face
-            p.trackToFace(f*s - d, f);
+            p.trackToFace(f*s - d + dXBrownian, f);
         }
         else
         {

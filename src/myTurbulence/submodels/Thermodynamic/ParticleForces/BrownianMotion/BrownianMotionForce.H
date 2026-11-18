@@ -45,6 +45,7 @@ Description
         lambda   | Molecular free path length             | scalar | yes  | -
         turbulence | Use turbulence                       | bool | yes | -
         spherical | Spherical instead of cubic distribution | bool | no  | true
+        displacement | Direct random position displacement each sub-step (overdamped Langevin), instead of a random force on the velocity ODE. Not valid with turbulence. | bool | no | false
     \endtable
 
 Note
@@ -96,6 +97,13 @@ class BrownianMotionForce
         //- Spherical vs cubic (transitional)
         bool useSpherical_;
 
+        //- Treat Brownian motion as a direct random displacement each
+        //- sub-step (overdamped Langevin / Euler-Maruyama), instead of as
+        //- a random force on the velocity ODE. Default off: exactly
+        //- today's force-based behaviour unless explicitly enabled.
+        //- Not valid together with turbulence (fatal at construction).
+        bool displacement_;
+
 
     // Private Member Functions
 
@@ -146,6 +154,9 @@ public:
         //- The turbulence flag
         bool turbulence() const noexcept { return turbulence_; }
 
+        //- Whether direct-displacement mode is active
+        virtual bool hasDisplacement() const { return displacement_; }
+
 
         // Evaluation
 
@@ -161,6 +172,21 @@ public:
                 const scalar mass,
                 const scalar Re,
                 const scalar muc
+            ) const;
+
+            //- Direct random position displacement (displacement mode only)
+            virtual vector calcDisplacement
+            (
+                const typename CloudType::parcelType& p,
+                const typename CloudType::parcelType::trackingData& td,
+                const scalar dt
+            ) const;
+
+            //- Stokes-Einstein-Cunningham diffusivity (displacement mode only)
+            virtual scalar displacementD
+            (
+                const typename CloudType::parcelType& p,
+                const typename CloudType::parcelType::trackingData& td
             ) const;
 };
 

@@ -80,8 +80,19 @@ Foam::BrownianMotionForce<CloudType>::BrownianMotionForce
     kPtr_(nullptr),
     turbulence_(this->coeffs().getBool("turbulence")),
     ownK_(false),
-    useSpherical_(this->coeffs().getOrDefault("spherical", true))
-{}
+    useSpherical_(this->coeffs().getOrDefault("spherical", true)),
+    displacement_(this->coeffs().getOrDefault("displacement", false))
+{
+    if (displacement_ && turbulence_)
+    {
+        FatalErrorInFunction
+            << "displacement yes; is not valid together with "
+            << "turbulence yes; - the turbulent branch is a different "
+            << "(k-based) closure, not the thermal overdamped-Langevin "
+            << "displacement derived for the non-turbulent branch."
+            << exit(FatalError);
+    }
+}
 
 
 template<class CloudType>
@@ -96,7 +107,8 @@ Foam::BrownianMotionForce<CloudType>::BrownianMotionForce
     kPtr_(nullptr),
     turbulence_(bmf.turbulence_),
     ownK_(false),
-    useSpherical_(bmf.useSpherical_)
+    useSpherical_(bmf.useSpherical_),
+    displacement_(bmf.displacement_)
 {}
 
 
@@ -160,6 +172,14 @@ Foam::forceSuSp Foam::BrownianMotionForce<CloudType>::calcCoupled
 {
     forceSuSp value(Zero);
 
+    if (displacement_)
+    {
+        // Brownian motion is instead applied as a direct position
+        // displacement (see calcDisplacement()) - no velocity-ODE
+        // contribution, to avoid double-counting the same physics.
+        return value;
+    }
+
     const scalar dp = p.d();
     const scalar Tc = td.Tc();
 
@@ -214,6 +234,55 @@ Foam::forceSuSp Foam::BrownianMotionForce<CloudType>::calcCoupled
     }
 
     return value;
+}
+
+
+template<class CloudType>
+Foam::scalar Foam::BrownianMotionForce<CloudType>::displacementD
+(
+    const typename CloudType::parcelType& p,
+    const typename CloudType::parcelType::trackingData& td
+) const
+{
+    if (!displacement_)
+    {
+        return 0;
+    }
+
+    const scalar dp = p.d();
+    const scalar Tc = td.Tc();
+    const scalar muc = td.muc();
+
+    const scalar alpha = 2.0*lambda_/dp;
+    const scalar cc = 1.0 + alpha*(1.257 + 0.4*exp(-1.1/alpha));
+
+    const scalar kb = physicoChemical::k.value();
+
+    return kb*Tc*cc/(3*mathematical::pi*muc*dp);
+}
+
+
+template<class CloudType>
+Foam::vector Foam::BrownianMotionForce<CloudType>::calcDisplacement
+(
+    const typename CloudType::parcelType& p,
+    const typename CloudType::parcelType::trackingData& td,
+    const scalar dt
+) const
+{
+    if (!displacement_)
+    {
+        return Zero;
+    }
+
+    const scalar D = displacementD(p, td);
+
+    Random& rnd = this->owner().rndGen();
+
+    // Cubic (3 independent components) sampling - the exact isotropic
+    // 3-D Gaussian the diffusion equation's Green's function requires,
+    // not the "spherical" scheme used by the force-based calcCoupled().
+    return sqrt(2.0*D*dt)*rnd.GaussNormal<vector>();
 }
 
 

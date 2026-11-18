@@ -184,6 +184,45 @@ public:
                 const typename CloudType::parcelType::trackingData& td,
                 const scalar mass
             ) const;
+
+            //- Return a direct random position displacement over this
+            //- sub-step (e.g. overdamped Brownian motion), bypassing the
+            //- velocity/force ODE entirely. Default: none. Only overridden
+            //- by force models that opt into this treatment; see
+            //- BrownianMotionForce's "displacement" switch.
+            virtual vector calcDisplacement
+            (
+                const typename CloudType::parcelType& p,
+                const typename CloudType::parcelType::trackingData& td,
+                const scalar dt
+            ) const
+            {
+                return Zero;
+            }
+
+            //- Return the diffusivity [m2/s] driving calcDisplacement(),
+            //- for callers (e.g. the tracking sub-step clamp) that need to
+            //- bound the step size before calcDisplacement() is actually
+            //- evaluated. Default: zero (no displacement contribution).
+            virtual scalar displacementD
+            (
+                const typename CloudType::parcelType& p,
+                const typename CloudType::parcelType::trackingData& td
+            ) const
+            {
+                return 0;
+            }
+
+            //- Whether this force model is in direct-displacement mode
+            //- (i.e. calcDisplacement()/displacementD() are live). Cheap
+            //- flag the tracking loop checks before paying for the extra
+            //- setCellValues() a correct displacement draw needs at the
+            //- start of a parcel's first sub-cycle - see KinematicParcel::
+            //- move(). Default: false.
+            virtual bool hasDisplacement() const
+            {
+                return false;
+            }
 };
 
 
