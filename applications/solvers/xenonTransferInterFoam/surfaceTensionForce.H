@@ -68,3 +68,32 @@ Foam::tmp<Foam::surfaceScalarField> surfaceTensionForce
 
     return tstf;
 }
+
+
+// Remove each drop's discrete net CSF force, which is exactly zero for a closed
+// interface but not after discretisation: at Bond numbers ~1e-2 the residual
+// can carry the drop's weight (see dropNetForce.H).
+void zeroDropNetForce
+(
+    Foam::surfaceScalarField& stf,
+    const Foam::volScalarField& alpha,
+    const Foam::volScalarField& rho
+)
+{
+    using namespace Foam;
+
+    const dropNetForce dnf(alpha, rho);
+    if (dnf.nDrops() <= 0) return;
+
+    const surfaceScalarField f(stf*alpha.mesh().magSf());
+    const scalarField& V = alpha.mesh().V();
+    vectorField F0;
+    stf += dnf.balance(f, V, vectorField(dnf.nDrops(), Zero), F0)/alpha.mesh().magSf();
+
+    forAll(F0, j)
+    {
+        if (dnf.vol()[j] <= VSMALL) continue;
+        Info<< "csfNetForce drop " << j << " F/m = "
+            << F0[j]/max(dnf.mass()[j], VSMALL) << " m/s2" << endl;
+    }
+}

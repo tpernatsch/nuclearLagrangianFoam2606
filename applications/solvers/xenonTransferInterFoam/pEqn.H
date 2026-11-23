@@ -30,7 +30,7 @@
     surfaceScalarField phig
     (
         (
-            surfaceTensionForce(fluid, nCurvatureSmooth)
+            stf
           - ghf*fvc::snGrad(rho)
         )*rAUf*mesh.magSf()
     );
@@ -64,7 +64,43 @@
 
             p_rgh.relax();
 
-            U = HbyA + rAU()*fvc::reconstruct((phig + p_rghEqn.flux())/rAUf);
+            surfaceScalarField fU((phig + p_rghEqn.flux())/rAUf);
+
+            // Per drop, zero net (CSF - grad p_rgh) momentum (dropNetForce.H);
+            // neglects the gas pressure force (buoyancy ~1e-6 g, form drag
+            // < 1 % g here). Fluxes unchanged
+            if (dropForceBalance != "none")
+            {
+                const dropNetForce dnf
+                (
+                    mesh.lookupObject<volScalarField>("alpha." + dropForceBalance),
+                    rho
+                );
+                if (dnf.nDrops() > 0)
+                {
+                    // Volume weights: the conservative momentum balance
+                    // (rho*rAU*V/dt weights left ~7 % of g, kin_fb 2026-11-23)
+                    const vectorField T(dnf.nDrops(), Zero);
+                    vectorField F0;
+                    fU += dnf.balance
+                    (
+                        fU + ghf*fvc::snGrad(rho)*mesh.magSf(), mesh.V(), T, F0
+                    );
+                    if (pimple.finalInnerIter())
+                    {
+                        forAll(F0, j)
+                        {
+                            if (dnf.vol()[j] <= VSMALL) continue;
+                            const scalar m = max(dnf.mass()[j], VSMALL);
+                            Info<< "dropForceBalance drop " << j
+                                << " net (csf - grad p_rgh)/m = " << F0[j]/m
+                                << " m/s2" << endl;
+                        }
+                    }
+                }
+            }
+
+            U = HbyA + rAU()*fvc::reconstruct(fU);
 
             U.correctBoundaryConditions();
             fvOptions.correct(U);

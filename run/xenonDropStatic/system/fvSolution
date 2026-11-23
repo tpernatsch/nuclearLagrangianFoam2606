@@ -142,6 +142,10 @@ PIMPLE
     pRefValue        5000;
 
     nCurvatureSmooth 0;     // curvature from alpha smoothed N times (0 = stock CSF)
+    csfZeroNetForce none;   // phase whose drops get zero net CSF force (none = off)
+    dropForceBalance none;  // phase whose drops get zero net (CSF - grad p_rgh) force (none = off)
+    momentumSp false;       // subtract U*(ddt(rho) + div(rhoPhi)) in UEqn (false = stock)
+    dropMomentumBudget none; // phase for the per-drop momentum budget log (none = off)
 
 }
 

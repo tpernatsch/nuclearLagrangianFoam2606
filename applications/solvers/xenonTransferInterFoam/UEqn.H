@@ -2,11 +2,16 @@ fvVectorMatrix UEqn
 (
     fvm::ddt(rho, U)
   + fvm::div(rhoPhi, U)
-//- fvm::Sp(fvc::ddt(rho) + fvc::div(rhoPhi), U)  // as stock; no effect on xenonDroplet (A/B < 3e-5)
   + turbulence->divDevRhoReff(U)
   ==
     fvOptions(rho, U)
 );
+
+// Mass-consistency term (PIMPLE momentumSp; off = stock)
+if (momentumSp)
+{
+    UEqn -= fvm::Sp(fvc::ddt(rho) + fvc::div(rhoPhi), U);
+}
 
 UEqn.relax();
 
@@ -21,7 +26,7 @@ if (pimple.momentumPredictor())
         fvc::reconstruct
         (
             (
-                surfaceTensionForce(fluid, nCurvatureSmooth)
+                stf
                 - ghf*fvc::snGrad(rho)
                 - fvc::snGrad(p_rgh)
             ) * mesh.magSf()

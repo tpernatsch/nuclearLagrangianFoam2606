@@ -54,7 +54,9 @@ Description
 #include "fvOptions.H"
 #include "radiationModel.H"
 #include "CorrectPhi.H"
+#include "dropNetForce.H"
 #include "surfaceTensionForce.H"
+#include "dropMomentumBudget.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -102,6 +104,23 @@ int main(int argc, char *argv[])
         const label nCurvatureSmooth =
             pimple.dict().getOrDefault<label>("nCurvatureSmooth", 0);
 
+        // Phase whose drops get a zero net CSF force (PIMPLE dict, none = off)
+        const word csfZeroNetForce =
+            pimple.dict().getOrDefault<word>("csfZeroNetForce", "none");
+
+        // U*(ddt(rho) + div(rhoPhi)) subtracted in UEqn (PIMPLE, off = stock)
+        const bool momentumSp =
+            pimple.dict().getOrDefault<bool>("momentumSp", false);
+
+        // Phase whose drops get zero net (CSF - grad p_rgh) force in the
+        // U reconstruction (PIMPLE, none = off)
+        const word dropForceBalance =
+            pimple.dict().getOrDefault<word>("dropForceBalance", "none");
+
+        // Phase for the per-drop momentum budget log (PIMPLE, none = off)
+        const word dropMomentumPhase =
+            pimple.dict().getOrDefault<word>("dropMomentumBudget", "none");
+
         #include "CourantNo.H"
         #include "alphaCourantNo.H"
         #include "setDeltaT.H"
@@ -113,6 +132,18 @@ int main(int argc, char *argv[])
         // Advance phase fractions and converge the pressure-velocity system first.
         fluid.solve();
         rho = fluid.rho();
+
+        // CSF force: alpha is fixed during the PIMPLE loop
+        surfaceScalarField stf(surfaceTensionForce(fluid, nCurvatureSmooth));
+        if (csfZeroNetForce != "none")
+        {
+            zeroDropNetForce
+            (
+                stf,
+                mesh.lookupObject<volScalarField>("alpha." + csfZeroNetForce),
+                rho
+            );
+        }
 
         while (pimple.loop())
         {
@@ -147,6 +178,17 @@ int main(int argc, char *argv[])
             {
                 turbulence->correct();
             }
+        }
+
+        if (dropMomentumPhase != "none")
+        {
+            dropMomentumBudget
+            (
+                mesh.lookupObject<volScalarField>("alpha." + dropMomentumPhase),
+                rho, U, rhoPhi, stf, ghf, p_rgh,
+                turbulence->divDevRhoReff(U) & U,
+                momentumSp
+            );
         }
 
         rho = fluid.rho();
