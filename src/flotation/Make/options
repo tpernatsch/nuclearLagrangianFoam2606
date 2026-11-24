@@ -23,14 +23,14 @@ LIB_LIBS = \
     -lturbulenceModels \
     -lcompressibleTurbulenceModels \
     -lcompressibleTransportModels
-# Deliberately NOT linking -lphaseCompressibleTurbulenceModels: doing so
-# causes an exit-time heap corruption ("malloc_consolidate(): unaligned
-# fastbin chunk detected" / "unsorted double linked list corrupted") when
-# this library is dynamically loaded via `libs` into reactingMultiphaseEulerFoam
-# - confirmed via a minimal isolated reproduction (a single trivial
-# runtime-selection-table class, otherwise unused, crashes purely from
-# this one link flag; every other combination of this library's actual
-# dependencies was clean). We never construct a phaseCompressibleTurbulenceModel
-# ourselves, only call virtual methods (nut()/epsilon()) on one that some
-# other, already-linked code constructed - that dispatches through the
-# object's own vtable at runtime and needs no direct link to this library.
+/* Deliberately NOT linking -lphaseCompressibleTurbulenceModels: doing so
+   causes an exit-time heap corruption ("malloc_consolidate(): unaligned
+   fastbin chunk detected" / "unsorted double linked list corrupted") when
+   this library is dynamically loaded via `libs` into reactingMultiphaseEulerFoam
+   - confirmed via a minimal isolated reproduction (a single trivial
+   runtime-selection-table class, otherwise unused, crashes purely from
+   this one link flag; every other combination of this library's actual
+   dependencies was clean). We never construct a phaseCompressibleTurbulenceModel
+   ourselves, only call virtual methods (nut()/epsilon()) on one that some
+   other, already-linked code constructed - that dispatches through the
+   object's own vtable at runtime and needs no direct link to this library. */

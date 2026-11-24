@@ -16,13 +16,23 @@
 # even right after a successful Allwmake.
 #------------------------------------------------------------------------------
 
-# Respect an already-correct WM_PROJECT_USER_DIR (e.g. set by Allwmake,
-# which knows its own location reliably) rather than recomputing it from
-# ${BASH_SOURCE:-$0}: that fallback only works under bash - under /bin/sh
-# (dash, no BASH_SOURCE) it resolves relative to $0, which breaks if the
-# caller has already cd'd elsewhere before sourcing this file.
-if [ -z "$WM_PROJECT_USER_DIR" ]; then
-    projDir="$(cd "$(dirname "${BASH_SOURCE:-$0}")/.." && pwd)"
+# Under bash, BASH_SOURCE reliably gives this file's own location no matter
+# what WM_PROJECT_USER_DIR already holds - and it must win: OpenFOAM's own
+# etc/bashrc (sourced beforehand, as instructed above) sets a non-empty
+# default ($HOME/$WM_PROJECT/$USER-$WM_PROJECT_VERSION) of its own, so "if
+# unset" would never recompute it for an interactive `source etc/sourceme.sh`
+# and silently keep pointing at that unrelated default instead of this repo.
+#
+# Under /bin/sh (dash, no BASH_SOURCE - i.e. Allwmake/Allwclean, which export
+# WM_PROJECT_USER_DIR=$PWD themselves right before sourcing this file) there
+# is no reliable own-location fallback once the caller has already cd'd, so
+# trust whatever is already set instead.
+if [ -n "$BASH_SOURCE" ]; then
+    projDir="$(cd "$(dirname "$BASH_SOURCE")/.." && pwd)"
+    export WM_PROJECT_USER_DIR="$projDir"
+    unset projDir
+elif [ -z "$WM_PROJECT_USER_DIR" ]; then
+    projDir="$(cd "$(dirname "$0")/.." && pwd)"
     export WM_PROJECT_USER_DIR="$projDir"
     unset projDir
 fi
