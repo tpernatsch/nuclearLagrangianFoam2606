@@ -25,5 +25,7 @@ run/xenonQueue/runs/
 run/xenonQueue/queue.log
 run/xenonQueue/queue.pid
 
-# confidential input data for heatedPool case C (never commit)
-run/heatedPool/confidential/
+# confidential material for heatedPool case C: everything stays out of git except the case inputs
+# (C_inputs.py is tracked on purpose so setupCase.py can build case C on the cluster)
+run/heatedPool/confidential/*
+!run/heatedPool/confidential/C_inputs.py
