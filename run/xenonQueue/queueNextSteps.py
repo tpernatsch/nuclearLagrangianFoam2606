@@ -55,3 +55,20 @@ RUNS = [
     dict(name="drop_cubic_fb", case="xenonDroplet", args=["-cubic", "-init", "smooth"], set=final(),
          note="mesh check: drop_thesis_fb on the cubic 15 um core"),
 ]
+
+# Gravity in the force balance (dropForceGravity): the reconstructed gravity term alone gave 0.75 g on the
+# graded thesis mesh (drop_thesis_fb, 0.88 g t at 15 ms) and 1.07 g on the cubic one (drop_cubic_fb)
+G = {"dropForceGravity": "true"}
+RUNS += [
+    dict(name="kin_fbg", case="xenonDropStatic", args=["-res", "medium", "-init", "smooth"],
+         set={"constant/g": {"value": "(0 0 -9.81)"},
+              "system/controlDict": {"endTime": "4e-3", "maxDeltaT": "3e-6", "writeInterval": "5e-4"},
+              "system/fvSolution": {"dropForceBalance": "liquid", "dropMomentumBudget": "liquid", **G}},
+         note="kin_fb with gravity in the force balance, 4 ms fall"),
+    dict(name="drop_thesis_fbg", case="xenonDroplet", args=["-init", "smooth"],
+         set=final(**{"system/fvSolution": {**final()["system/fvSolution"], **G}}),
+         note="drop_thesis_fb with gravity in the force balance"),
+    dict(name="drop_cubic_fbg", case="xenonDroplet", args=["-cubic", "-init", "smooth"],
+         set=final(**{"system/fvSolution": {**final()["system/fvSolution"], **G}}),
+         note="drop_cubic_fb with gravity in the force balance"),
+]

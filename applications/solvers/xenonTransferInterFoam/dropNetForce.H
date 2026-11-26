@@ -6,7 +6,8 @@
 // conservative, so a balanced interface (CSF against the Laplace pressure jump)
 // leaves a spurious net force. balance() adds -(b_j & (x - xc_j))*snGrad(alpha)
 // *magSf, a gravity-form term acting only where snGrad(alpha) does, with b_j
-// from the 3x3 system that sets net(f + correction, w) to a target.
+// from the 3x3 system that sets net(f + correction, w) to a target
+// (zero, or weight() when f includes the gravity term).
 
 class dropNetForce
 {
@@ -17,6 +18,7 @@ class dropNetForce
     Foam::List<Foam::labelList> pown_, pnbr_;  // patch face: owner / neighbour drop id
     Foam::vectorField xc_;
     Foam::scalarField vol_, mass_;
+    Foam::scalarField rhoV_, volR_, rhoMin_;   // region (drop + halo) sums, min rho
     Foam::surfaceScalarField snGradAlpha_;
 
 public:
@@ -83,6 +85,9 @@ public:
         xc_.setSize(nDrop_, Zero);
         vol_.setSize(nDrop_, Zero);
         mass_.setSize(nDrop_, Zero);
+        rhoV_.setSize(nDrop_, Zero);
+        volR_.setSize(nDrop_, Zero);
+        rhoMin_.setSize(nDrop_, GREAT);
         forAll(cid_, celli)
         {
             const label j = cid_[celli];
@@ -91,16 +96,37 @@ public:
             xc_[j] += w*C[celli];
             vol_[j] += w;
             mass_[j] += w*rho[celli];
+            rhoV_[j] += rho[celli]*V[celli];
+            volR_[j] += V[celli];
+            rhoMin_[j] = min(rhoMin_[j], rho[celli]);
         }
         Pstream::listCombineReduce(xc_, plusEqOp<vector>());
         Pstream::listCombineReduce(vol_, plusEqOp<scalar>());
         Pstream::listCombineReduce(mass_, plusEqOp<scalar>());
+        Pstream::listCombineReduce(rhoV_, plusEqOp<scalar>());
+        Pstream::listCombineReduce(volR_, plusEqOp<scalar>());
+        Pstream::listCombineReduce(rhoMin_, minEqOp<scalar>());
         forAll(xc_, j) xc_[j] /= max(vol_[j], VSMALL);
     }
 
     Foam::label nDrops() const { return nDrop_; }
     const Foam::scalarField& vol() const { return vol_; }
     const Foam::scalarField& mass() const { return mass_; }
+
+    // Region mass (drop + halo, the momentum of the dropMomentumBudget log)
+    const Foam::scalarField& regionMass() const { return rhoV_; }
+
+    // Weight minus buoyancy of the region, sum (rho - rho_gas) V g; rho_gas is
+    // the region minimum (halo in pure gas)
+    Foam::vectorField weight(const Foam::vector& g) const
+    {
+        Foam::vectorField W(nDrop_, Foam::Zero);
+        forAll(W, j)
+        {
+            if (volR_[j] > Foam::VSMALL) W[j] = (rhoV_[j] - rhoMin_[j]*volR_[j])*g;
+        }
+        return W;
+    }
 
     Foam::vectorField net(const Foam::surfaceScalarField& f, const Foam::scalarField& w) const
     {

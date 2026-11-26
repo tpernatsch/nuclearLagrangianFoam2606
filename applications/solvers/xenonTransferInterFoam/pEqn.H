@@ -66,9 +66,11 @@
 
             surfaceScalarField fU((phig + p_rghEqn.flux())/rAUf);
 
-            // Per drop, zero net (CSF - grad p_rgh) momentum (dropNetForce.H);
-            // neglects the gas pressure force (buoyancy ~1e-6 g, form drag
-            // < 1 % g here). Fluxes unchanged
+            // Per drop (dropNetForce.H), net (CSF - grad p_rgh) momentum = 0,
+            // or with dropForceGravity net (CSF - grad p_rgh + gravity term) =
+            // weight - buoyancy (the reconstructed gravity term alone gave
+            // 0.75-1.07 g, drop_thesis_fb / drop_cubic_fb 2026-11-24). Both
+            // neglect the gas form drag (< 1 % g here). Fluxes unchanged
             if (dropForceBalance != "none")
             {
                 const dropNetForce dnf
@@ -80,20 +82,28 @@
                 {
                     // Volume weights: the conservative momentum balance
                     // (rho*rAU*V/dt weights left ~7 % of g, kin_fb 2026-11-23)
-                    const vectorField T(dnf.nDrops(), Zero);
-                    vectorField F0;
-                    fU += dnf.balance
+                    const vectorField T
                     (
-                        fU + ghf*fvc::snGrad(rho)*mesh.magSf(), mesh.V(), T, F0
+                        dropForceGravity
+                      ? dnf.weight(g.value())
+                      : vectorField(dnf.nDrops(), Zero)
                     );
+                    surfaceScalarField fB(fU);
+                    if (!dropForceGravity)
+                    {
+                        fB += ghf*fvc::snGrad(rho)*mesh.magSf();
+                    }
+                    vectorField F0;
+                    fU += dnf.balance(fB, mesh.V(), T, F0);
                     if (pimple.finalInnerIter())
                     {
                         forAll(F0, j)
                         {
                             if (dnf.vol()[j] <= VSMALL) continue;
-                            const scalar m = max(dnf.mass()[j], VSMALL);
-                            Info<< "dropForceBalance drop " << j
-                                << " net (csf - grad p_rgh)/m = " << F0[j]/m
+                            const scalar m = max(dnf.regionMass()[j], VSMALL);
+                            Info<< "dropForceBalance drop " << j << " net "
+                                << (dropForceGravity ? "(csf - grad p)" : "(csf - grad p_rgh)")
+                                << "/m = " << F0[j]/m << " target " << T[j]/m
                                 << " m/s2" << endl;
                         }
                     }

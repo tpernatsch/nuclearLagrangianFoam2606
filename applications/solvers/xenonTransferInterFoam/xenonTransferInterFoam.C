@@ -117,6 +117,11 @@ int main(int argc, char *argv[])
         const word dropForceBalance =
             pimple.dict().getOrDefault<word>("dropForceBalance", "none");
 
+        // With dropForceBalance: net (CSF - grad p_rgh + gravity term) = weight
+        // minus buoyancy instead (mesh-independent free fall; keeps viscous drag)
+        const bool dropForceGravity =
+            pimple.dict().getOrDefault<bool>("dropForceGravity", false);
+
         // Phase for the per-drop momentum budget log (PIMPLE, none = off)
         const word dropMomentumPhase =
             pimple.dict().getOrDefault<word>("dropMomentumBudget", "none");
